@@ -1,0 +1,649 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum Plan {
+  BASIC
+  MID
+  PRO
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ProjectRole {
+  PROJECT_OWNER
+  EDITOR
+  VIEWER
+}
+
+enum ProjectStatus {
+  CREATED
+  IN_PROGRESS
+  COMPLETED
+  REOPENED
+  ARCHIVED
+  DELETED
+}
+
+enum Module {
+  A  // Brand Creation
+  B  // Brand Strategy
+}
+
+enum Language {
+  ES
+  EN
+}
+
+enum JobType {
+  GENERATE_OUTPUT
+  REGENERATE_OUTPUT
+  PROCESS_LIBRARY_FILE
+  BUILD_BRAND_PACK
+  BUILD_STRATEGY_PACK
+  BUILD_BRAND_MANUAL
+  BATCH_LOGOS
+  BATCH_MOCKUPS
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum StageStatus {
+  NOT_STARTED
+  GENERATED
+  APPROVED
+  REGENERATED
+  BLOCKED
+}
+
+enum OutputType {
+  GENERATED
+  EDITED
+}
+
+enum OutputStatus {
+  GENERATED
+  SELECTED
+  APPROVED
+  OBSOLETE
+}
+
+enum LibraryFileStatus {
+  UPLOADED
+  PROCESSING
+  AVAILABLE
+  ERROR
+  DELETED
+}
+
+enum NotificationType {
+  MENTION
+  COMMENT
+  STAGE_UPDATE
+  PROJECT_UPDATE
+  SYSTEM
+}
+
+enum AuditAction {
+  // Auth
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  MFA_ENABLED
+  MFA_DISABLED
+  // Organization
+  ORG_CREATED
+  ORG_UPDATED
+  ORG_MEMBER_INVITED
+  ORG_MEMBER_REMOVED
+  ORG_ROLE_CHANGED
+  ORG_POLICY_UPDATED
+  // Project
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_ARCHIVED
+  PROJECT_MEMBER_ADDED
+  PROJECT_MEMBER_REMOVED
+  PROJECT_ROLE_CHANGED
+  // Outputs
+  OUTPUT_GENERATED
+  OUTPUT_REGENERATED
+  OUTPUT_APPROVED
+  OUTPUT_EDITED
+  // Billing
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  SUBSCRIPTION_CANCELED
+  ADDON_PURCHASED
+  PAYMENT_FAILED
+  // Security
+  API_KEY_CREATED
+  API_KEY_ROTATED
+  API_KEY_REVOKED
+  SSO_CONFIGURED
+}
+
+// =============================================================================
+// CORE MULTI-TENANT
+// =============================================================================
+
+model Organization {
+  id                  String             @id @default(cuid())
+  clerkOrgId          String             @unique
+  name                String
+  slug                String             @unique
+  
+  // Plan & Billing
+  plan                Plan               @default(BASIC)
+  byoMode             Boolean            @default(false)
+  stripeCustomerId    String?            @unique
+  subscriptionId      String?
+  subscriptionStatus  SubscriptionStatus @default(TRIAL)
+  
+  // Enterprise Security Policies
+  mfaRequired         Boolean            @default(false)
+  ssoRequired         Boolean            @default(false)
+  ssoConnectionId     String?
+  domainRestriction   String?
+  ipAllowlist         String[]           @default([])
+  sessionTimeout      Int?               // minutes
+  auditLevel          String             @default("basic") // basic | extended
+  
+  // Limits
+  maxSeats            Int                @default(3)
+  maxStoragePerProject BigInt            @default(1073741824) // 1GB in bytes
+  maxProjects         Int                @default(5)
+  
+  // Relations
+  members             OrgMember[]
+  projects            Project[]
+  apiKeys             ApiKey[]
+  auditLogs           AuditLog[]
+  
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+model OrgMember {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String   // Clerk user ID
+  email     String
+  role      OrgRole  @default(MEMBER)
+  
+  // Invitation
+  invitedBy String?
+  invitedAt DateTime?
+  acceptedAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+// =============================================================================
+// PROJECTS
+// =============================================================================
+
+model Project {
+  id          String        @id @default(cuid())
+  orgId       String
+  org         Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  language    Language      @default(ES)
+  status      ProjectStatus @default(CREATED)
+  
+  // Modules enabled
+  moduleA     Boolean       @default(false) // Brand Creation
+  moduleB     Boolean       @default(false) // Brand Strategy
+  
+  // Cloning/Branching
+  parentId    String?
+  parent      Project?      @relation("ProjectBranches", fields: [parentId], references: [id])
+  branches    Project[]     @relation("ProjectBranches")
+  
+  // Relations
+  members     ProjectMember[]
+  library     LibraryFile[]
+  brandCore   BrandCoreProfile?
+  stages      Stage[]
+  outputs     Output[]
+  comments    Comment[]
+  jobs        Job[]
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([orgId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String      // Clerk user ID
+  email     String
+  role      ProjectRole @default(VIEWER)
+  
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+}
+
+// =============================================================================
+// BRAND CORE PROFILE
+// =============================================================================
+
+model BrandCoreProfile {
+  id              String   @id @default(cuid())
+  projectId       String   @unique
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // Core elements
+  valueProposition String?
+  audience        Json?    // buyer personas
+  positioning     String?
+  tonePersonality Json?
+  allowedClaims   String[]
+  prohibitedClaims String[]
+  chosenName      String?
+  restrictions    String[]
+  objectives      String[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// =============================================================================
+// STAGES (Module A and B)
+// =============================================================================
+
+model Stage {
+  id          String      @id @default(cuid())
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  module      Module
+  stageKey    String      // A1, A2, A3... or B1, B2, B3...
+  name        String
+  description String?
+  order       Int
+  status      StageStatus @default(NOT_STARTED)
+  
+  // Soft-lock for editing
+  lockedBy    String?     // userId
+  lockedAt    DateTime?
+  
+  // Relations
+  outputs     Output[]
+  comments    Comment[]
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@unique([projectId, stageKey])
+  @@index([projectId])
+  @@index([projectId, module])
+}
+
+// =============================================================================
+// OUTPUTS & VERSIONING
+// =============================================================================
+
+model Output {
+  id          String       @id @default(cuid())
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId     String
+  stage       Stage        @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  
+  name        String
+  outputKey   String       // naming, manifesto, logo_primary, etc.
+  
+  // Relations
+  versions    OutputVersion[]
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@unique([projectId, stageId, outputKey])
+  @@index([projectId])
+  @@index([stageId])
+}
+
+model OutputVersion {
+  id              String       @id @default(cuid())
+  outputId        String
+  output          Output       @relation(fields: [outputId], references: [id], onDelete: Cascade)
+  version         Int          @default(1)
+  type            OutputType   @default(GENERATED)
+  status          OutputStatus @default(GENERATED)
+  
+  // Content
+  content         Json?        // For text/structured outputs
+  fileUrl         String?      // For files (images, PDFs)
+  fileType        String?      // mime type
+  fileSize        Int?
+  thumbnailUrl    String?
+  
+  // Metadata
+  provider        String?      // openai, anthropic, etc.
+  model           String?
+  promptSetVersion String?
+  generationParams Json?
+  
+  // Regeneration
+  feedbackInput   String?      // User feedback for regeneration
+  elementsToKeep  String[]     // Checklist of elements to maintain
+  
+  // Attribution
+  createdBy       String       // userId
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  @@unique([outputId, version])
+  @@index([outputId])
+  @@index([status])
+}
+
+// =============================================================================
+// PROJECT LIBRARY
+// =============================================================================
+
+model LibraryFile {
+  id          String            @id @default(cuid())
+  projectId   String
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int
+  storageKey  String
+  
+  status      LibraryFileStatus @default(UPLOADED)
+  processingError String?
+  
+  // Metadata
+  uploadedBy  String            // userId
+  metadata    Json?
+  
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  
+  @@index([projectId])
+  @@index([status])
+}
+
+// =============================================================================
+// JOB QUEUE (DB-based, no Redis)
+// =============================================================================
+
+model Job {
+  id          String    @id @default(cuid())
+  orgId       String
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  
+  module      Module?
+  stage       String?
+  type        JobType
+  payload     Json
+  
+  status      JobStatus @default(QUEUED)
+  progress    Int       @default(0)
+  result      Json?
+  error       String?
+  
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  
+  // Locking for worker
+  lockedAt    DateTime?
+  lockedBy    String?   // worker instance ID
+  
+  // Timing
+  startedAt   DateTime?
+  completedAt DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([status, createdAt])
+  @@index([orgId])
+  @@index([projectId])
+}
+
+// =============================================================================
+// COLLABORATION
+// =============================================================================
+
+model Comment {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId     String?
+  stage       Stage?    @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  
+  // Thread
+  parentId    String?
+  parent      Comment?  @relation("CommentThread", fields: [parentId], references: [id])
+  replies     Comment[] @relation("CommentThread")
+  
+  content     String
+  mentions    String[]  // userIds mentioned with @
+  
+  authorId    String    // userId
+  authorEmail String
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Read receipts
+  readReceipts CommentReadReceipt[]
+  
+  @@index([projectId])
+  @@index([stageId])
+  @@index([parentId])
+}
+
+model CommentReadReceipt {
+  id        String   @id @default(cuid())
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  readAt    DateTime @default(now())
+  
+  @@unique([commentId, userId])
+  @@index([userId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  orgId       String?
+  projectId   String?
+  
+  type        NotificationType
+  title       String
+  message     String
+  link        String?
+  
+  read        Boolean          @default(false)
+  readAt      DateTime?
+  
+  metadata    Json?
+  
+  createdAt   DateTime         @default(now())
+  
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
+// =============================================================================
+// BYO API KEYS (encrypted server-side)
+// =============================================================================
+
+model ApiKey {
+  id              String       @id @default(cuid())
+  orgId           String
+  org             Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  provider        String       // openai, anthropic, etc.
+  keyType         String       // text, image
+  
+  // Encrypted key (never expose raw)
+  encryptedKey    String
+  keyHint         String       // last 4 chars for display
+  
+  // Validation
+  isValid         Boolean      @default(false)
+  lastValidated   DateTime?
+  validationError String?
+  
+  // Audit
+  createdBy       String       // userId
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  @@unique([orgId, provider, keyType])
+  @@index([orgId])
+}
+
+// =============================================================================
+// PROMPT/WORKFLOW REGISTRY
+// =============================================================================
+
+model PromptSet {
+  id          String    @id @default(cuid())
+  name        String
+  module      Module
+  stage       String
+  version     String
+  isActive    Boolean   @default(false)
+  
+  prompts     Json      // Array of prompt configurations
+  
+  createdBy   String    // userId
+  activatedBy String?
+  activatedAt DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([module, stage, version])
+  @@index([module, stage, isActive])
+}
+
+model WorkflowSet {
+  id          String    @id @default(cuid())
+  name        String
+  module      Module
+  version     String
+  isActive    Boolean   @default(false)
+  
+  workflow    Json      // Workflow configuration
+  
+  createdBy   String    // userId
+  activatedBy String?
+  activatedAt DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([module, version])
+  @@index([module, isActive])
+}
+
+// =============================================================================
+// AUDIT LOG
+// =============================================================================
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  userId      String?
+  userEmail   String?
+  
+  action      AuditAction
+  resource    String      // project, output, member, etc.
+  resourceId  String?
+  
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime    @default(now())
+  
+  @@index([orgId, createdAt])
+  @@index([userId])
+  @@index([action])
+}
+
+// =============================================================================
+// BILLING (Stripe integration)
+// =============================================================================
+
+model UsageRecord {
+  id          String   @id @default(cuid())
+  orgId       String
+  
+  // What was used
+  type        String   // tokens_text, tokens_image, images_generated
+  quantity    Int
+  
+  // Context
+  projectId   String?
+  jobId       String?
+  
+  // Stripe metering
+  stripeMeterId   String?
+  stripeMeterEventId String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([orgId, createdAt])
+  @@index([orgId, type])
+}
