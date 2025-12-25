@@ -63,14 +63,28 @@ export function StageActions({
     const COOLDOWN_MS = 900;
     const [cooldownUntil, setCooldownUntil] = useState(0);
     const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const isMountedRef = useRef(true);
 
-    // Fetch output data from /output endpoint
+    // Fetch output data from /output endpoint with abort support
     const fetchOutput = useCallback(async () => {
         if (!projectId || !stageKey) return;
 
+        // Cancel previous request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
         setIsLoadingOutput(true);
         try {
-            const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/output`);
+            const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/output`, {
+                signal: abortControllerRef.current.signal,
+            });
+
+            // Check if component unmounted during fetch
+            if (!isMountedRef.current) return;
+
             if (!response.ok) {
                 if (response.status === 401) {
                     throw new Error("Authentication required");
@@ -78,12 +92,18 @@ export function StageActions({
                 throw new Error("Error fetching output");
             }
             const data: OutputData = await response.json();
-            setOutputData(data);
+            if (isMountedRef.current) {
+                setOutputData(data);
+            }
         } catch (err) {
+            // Ignore abort errors
+            if (err instanceof Error && err.name === "AbortError") return;
             console.error("[StageActions] Error fetching output:", err);
             // Don't set error for initial load failures - just no data
         } finally {
-            setIsLoadingOutput(false);
+            if (isMountedRef.current) {
+                setIsLoadingOutput(false);
+            }
         }
     }, [projectId, stageKey]);
 
@@ -92,11 +112,16 @@ export function StageActions({
         fetchOutput();
     }, [fetchOutput, status]);
 
-    // Cleanup timer on unmount
+    // Cleanup on unmount
     useEffect(() => {
+        isMountedRef.current = true;
         return () => {
+            isMountedRef.current = false;
             if (cooldownTimerRef.current) {
                 clearTimeout(cooldownTimerRef.current);
+            }
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
             }
         };
     }, []);
