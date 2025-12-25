@@ -57,21 +57,31 @@ else
 fi
 echo ""
 
-# Test 3: UI route without auth should redirect to sign-in
-echo "Test 3: /projects (UI route, should redirect to sign-in)"
-PROJECTS_UI=$(curl -sI "${BASE_URL}/projects" 2>&1)
-PROJECTS_UI_STATUS=$(echo "$PROJECTS_UI" | head -1)
+# Test 3: UI route "/" should NOT return 401 JSON
+# Accept: 200 OK (public) or 30x redirect to sign-in (protected)
+# Fail if: 401 JSON or x-middleware-rewrite to /clerk_...
+echo "Test 3: / (UI route, should NOT return 401 JSON)"
+HOME_RESPONSE=$(curl -sI "${BASE_URL}/" 2>&1)
+HOME_STATUS=$(echo "$HOME_RESPONSE" | head -1)
 
-if echo "$PROJECTS_UI_STATUS" | grep -qE '^HTTP/.* (302|307|308)'; then
-    echo "  ✅ Status: Redirect"
-    LOCATION=$(echo "$PROJECTS_UI" | grep -i "location" | head -1)
+# Check for bad patterns
+if echo "$HOME_RESPONSE" | grep -qiE 'x-middleware-rewrite.*clerk'; then
+    echo "  ❌ FAIL: Found x-middleware-rewrite to Clerk"
+    FAILED=1
+elif echo "$HOME_STATUS" | grep -qE '^HTTP/.* 401'; then
+    echo "  ❌ FAIL: UI route returned 401 (should redirect or be 200)"
+    FAILED=1
+elif echo "$HOME_STATUS" | grep -qE '^HTTP/.* 200'; then
+    echo "  ✅ Status: 200 OK (home is public)"
+elif echo "$HOME_STATUS" | grep -qE '^HTTP/.* (302|307|308)'; then
+    LOCATION=$(echo "$HOME_RESPONSE" | grep -i "location" | head -1)
     if echo "$LOCATION" | grep -qi "sign-in"; then
-        echo "  ✅ Redirects to sign-in"
+        echo "  ✅ Status: Redirect to sign-in (home is protected)"
     else
-        echo "  ⚠️  Redirect location: $LOCATION"
+        echo "  ✅ Status: Redirect (location: $LOCATION)"
     fi
 else
-    echo "  ⚠️  Status: $PROJECTS_UI_STATUS (expected redirect)"
+    echo "  ⚠️  Unexpected status: $HOME_STATUS"
 fi
 echo ""
 
