@@ -1,0 +1,84 @@
+name: Manual - verify:e2e:auth
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e-auth:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: brandforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d brandforge"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/brandforge?schema=public
+      AI_PROVIDER: MOCK
+      CLERK_COOKIE: ${{ secrets.CLERK_COOKIE }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Migrate DB (deploy)
+        run: npx prisma migrate deploy
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server (background)
+        run: |
+          nohup npm start > server.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://localhost:3000/api/ai/ping >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          tail -n 200 server.log || true
+          exit 1
+
+      - name: Start worker (background)
+        run: |
+          nohup npm run worker:start > worker.log 2>&1 &
+          sleep 1
+
+      - name: Run verify:e2e:auth
+        run: |
+          if [ -z "$CLERK_COOKIE" ]; then
+            echo "Missing CLERK_COOKIE secret. Add it in GitHub Secrets."
+            exit 1
+          fi
+          npm run verify:e2e:auth
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            server.log
+            worker.log
