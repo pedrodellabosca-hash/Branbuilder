@@ -23,6 +23,7 @@
     "verify:openai": "./scripts/verify-openai.sh",
     "verify:output": "./scripts/verify-output.sh",
     "verify:openai:modes": "./scripts/verify-openai-modes.sh",
+    "verify:e2e:auth": "./scripts/verify-e2e-auth.sh",
     "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
     "postinstall": "prisma generate"
   },
