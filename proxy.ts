@@ -16,7 +16,7 @@ function isApiRoute(pathname: string): boolean {
     return pathname.startsWith('/api/') || pathname.startsWith('/trpc/')
 }
 
-export default clerkMiddleware(async (auth, request) => {
+export const proxy = clerkMiddleware(async (auth, request) => {
     const { pathname } = request.nextUrl
 
     // Skip public routes
