@@ -3,17 +3,17 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 
 interface RouteParams {
-    params: Promise<{ id: string; stageId: string }>;
+    params: Promise<{ id: string; stageKey: string }>;
 }
 
 /**
- * POST /api/projects/[id]/stages/[stageId]/approve
+ * POST /api/projects/[id]/stages/[stageKey]/approve
  * Approves a stage (changes status to APPROVED)
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
         const { userId, orgId } = await auth();
-        const { id: projectId, stageId } = await params;
+        const { id: projectId, stageKey } = await params;
 
         if (!userId || !orgId) {
             return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -31,10 +31,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             );
         }
 
-        // Get stage with multi-tenant check
+        // Get stage by stageKey with multi-tenant check
         const stage = await prisma.stage.findFirst({
             where: {
-                id: stageId,
+                stageKey,
                 projectId,
                 project: {
                     orgId: org.id,
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         // Update stage status to APPROVED
         const updatedStage = await prisma.stage.update({
-            where: { id: stageId },
+            where: { id: stage.id },
             data: { status: "APPROVED" },
         });
 
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             success: true,
             stage: {
                 id: updatedStage.id,
+                stageKey: updatedStage.stageKey,
                 status: updatedStage.status,
             },
         });

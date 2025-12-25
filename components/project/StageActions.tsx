@@ -243,7 +243,7 @@ export function StageActions({
         setError(null);
 
         try {
-            const response = await fetch(`/api/projects/${projectId}/stages/${stageId}/approve`, {
+            const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/approve`, {
                 method: "POST",
             });
 
