@@ -21,14 +21,17 @@ export const config = {
          * Match all request paths EXCEPT:
          * - _next (Next.js internals)
          * - Static files (images, fonts, etc.)
-         * - Public API routes that should bypass Clerk entirely:
-         *   - /api/ai/ping (health check)
-         *   - /api/webhooks/clerk (Clerk webhooks)
-         *   - /api/webhooks/stripe (Stripe webhooks)
+         * - Public API routes that bypass Clerk entirely:
+         *   - /api/ai/ping (exact or with trailing content)
+         *   - /api/webhooks/clerk/* 
+         *   - /api/webhooks/stripe/*
          * 
-         * These excluded routes will NOT trigger Clerk middleware at all,
-         * so no x-clerk-* headers will be added.
+         * Regex explanation:
+         * - api/ai/ping(?:/.*|$) → matches /api/ai/ping, /api/ai/ping/, /api/ai/ping/anything
+         *   but NOT /api/ai/pingX (the (?:/|$) ensures word boundary)
+         * - api/webhooks/clerk(?:/.*|$) → same pattern for clerk webhooks
+         * - api/webhooks/stripe(?:/.*|$) → same pattern for stripe webhooks
          */
-        '/((?!_next|api/ai/ping|api/webhooks/clerk|api/webhooks/stripe|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+        '/((?!_next|api/ai/ping(?:/.*)?$|api/webhooks/clerk(?:/.*)?$|api/webhooks/stripe(?:/.*)?$|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     ],
 }
