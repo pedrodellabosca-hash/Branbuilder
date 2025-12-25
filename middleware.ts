@@ -22,16 +22,16 @@ export const config = {
          * - _next (Next.js internals)
          * - Static files (images, fonts, etc.)
          * - Public API routes that bypass Clerk entirely:
-         *   - /api/ai/ping (exact or with trailing content)
+         *   - /api/ai/ping (and subpaths)
          *   - /api/webhooks/clerk/* 
          *   - /api/webhooks/stripe/*
          * 
-         * Regex explanation:
-         * - api/ai/ping(?:/.*|$) → matches /api/ai/ping, /api/ai/ping/, /api/ai/ping/anything
-         *   but NOT /api/ai/pingX (the (?:/|$) ensures word boundary)
-         * - api/webhooks/clerk(?:/.*|$) → same pattern for clerk webhooks
-         * - api/webhooks/stripe(?:/.*|$) → same pattern for stripe webhooks
+         * Regex uses (?:/|$) to match segment boundary:
+         * - /api/ai/ping → matches ($ = end of string)
+         * - /api/ai/ping/ → matches (/ after ping)
+         * - /api/ai/ping/foo → matches (/ after ping)
+         * - /api/ai/pingX → does NOT match (no / or $ after ping)
          */
-        '/((?!_next|api/ai/ping(?:/.*)?$|api/webhooks/clerk(?:/.*)?$|api/webhooks/stripe(?:/.*)?$|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+        '/((?!_next|api/ai/ping(?:/|$)|api/webhooks/clerk(?:/|$)|api/webhooks/stripe(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     ],
 }
