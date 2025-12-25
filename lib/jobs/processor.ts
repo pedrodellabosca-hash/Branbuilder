@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { getAIProvider, type AIMessage } from "@/lib/ai";
+import { getAIProvider } from "@/lib/ai";
+import { getStagePrompt } from "@/lib/prompts";
 
 /**
  * Process a job synchronously (for dev mode or inline processing)
@@ -72,43 +73,6 @@ interface JobData {
     payload: unknown;
 }
 
-/**
- * Get placeholder prompt for a stage
- * PR3 will replace these with full prompts
- */
-function getPromptForStage(stageKey: string, stageName: string, isRegenerate: boolean): AIMessage[] {
-    const action = isRegenerate ? "regenera" : "genera";
-
-    // Placeholder prompts by stage key (will be expanded in PR3)
-    const stagePrompts: Record<string, string> = {
-        // Module A - Brand Strategy
-        naming: `${action} 3-5 opciones de naming para una marca. Incluye nombre y breve justificación para cada uno.`,
-        manifesto: `${action} un manifiesto de marca de 100-150 palabras que capture la esencia y valores de la marca.`,
-        voice: `${action} una guía de voz de marca definiendo tono, estilo y ejemplos de comunicación.`,
-        tagline: `${action} 3-5 opciones de tagline/eslogan de máximo 8 palabras cada uno.`,
-
-        // Module B - Visual Identity
-        palette: `${action} una paleta de colores con 5 colores (primario, secundarios, acento). Incluye códigos HEX.`,
-        typography: `${action} recomendaciones tipográficas: tipografía principal y secundaria con justificación.`,
-
-        // Default
-        default: `${action} contenido profesional para la etapa "${stageName}" de un proyecto de branding.`,
-    };
-
-    const userPrompt = stagePrompts[stageKey] || stagePrompts.default;
-
-    return [
-        {
-            role: "system",
-            content: "Eres un experto consultor de branding y estrategia de marca. Genera contenido profesional, creativo y estructurado. Responde en español. Usa formato JSON cuando sea apropiado para listas o estructuras.",
-        },
-        {
-            role: "user",
-            content: userPrompt,
-        },
-    ];
-}
-
 async function processGenerateOutput(job: JobData): Promise<object> {
     const payload = job.payload as { stageId?: string };
     const stageId = payload.stageId;
@@ -129,7 +93,7 @@ async function processGenerateOutput(job: JobData): Promise<object> {
         },
         include: {
             project: {
-                select: { orgId: true },
+                select: { orgId: true, name: true },
             },
         },
     });
@@ -142,11 +106,22 @@ async function processGenerateOutput(job: JobData): Promise<object> {
 
     const isRegenerate = job.type === "REGENERATE_OUTPUT";
 
+    // Get prompt from registry
+    const prompt = getStagePrompt(stage.stageKey);
+    console.log(`[JobProcessor] Using prompt: ${prompt.id} v${prompt.version}`);
+
+    // Build messages with context
+    const messages = prompt.buildMessages({
+        stageName: stage.name,
+        stageKey: stage.stageKey,
+        isRegenerate,
+        projectName: stage.project.name,
+    });
+
     // Get AI provider and generate content
     const provider = getAIProvider();
-    const messages = getPromptForStage(stage.stageKey, stage.name, isRegenerate);
-
     console.log(`[JobProcessor] Calling AI provider: ${provider.type}`);
+
     const aiResponse = await provider.complete({
         messages,
         temperature: 0.7,
@@ -154,13 +129,11 @@ async function processGenerateOutput(job: JobData): Promise<object> {
 
     console.log(`[JobProcessor] AI response received (${aiResponse.usage?.totalTokens || 0} tokens)`);
 
-    // Parse or use raw content
-    let generatedContent: object;
-    try {
-        generatedContent = JSON.parse(aiResponse.content);
-    } catch {
-        // If not JSON, wrap in object
-        generatedContent = { content: aiResponse.content };
+    // Parse output using prompt's parser
+    const parsed = prompt.parseOutput(aiResponse.content);
+
+    if (!parsed.ok) {
+        console.warn(`[JobProcessor] Parse warning for ${stage.stageKey}: ${parsed.error}`);
     }
 
     // Find or create output
@@ -177,16 +150,27 @@ async function processGenerateOutput(job: JobData): Promise<object> {
         },
     });
 
+    // Build version content with metadata
     const versionContent = {
-        title: stage.name,
+        // Prompt metadata
+        promptId: prompt.id,
+        promptVersion: prompt.version,
+
+        // AI metadata
+        aiProvider: provider.type,
+        aiModel: aiResponse.model,
+        tokens: aiResponse.usage?.totalTokens || 0,
+
+        // Generation metadata
         stageKey: stage.stageKey,
         generated: true,
         regenerated: isRegenerate,
         generatedAt: new Date().toISOString(),
-        aiProvider: provider.type,
-        aiModel: aiResponse.model,
-        tokens: aiResponse.usage?.totalTokens || 0,
-        ...generatedContent,
+
+        // Content
+        parsed: parsed.ok,
+        rawContent: aiResponse.content,
+        ...(parsed.ok && parsed.data ? parsed.data : {}),
     };
 
     if (!output) {
@@ -244,7 +228,10 @@ async function processGenerateOutput(job: JobData): Promise<object> {
         stageId,
         stageKey: stage.stageKey,
         status: newStatus,
+        promptId: prompt.id,
+        promptVersion: prompt.version,
         aiProvider: provider.type,
         tokens: aiResponse.usage?.totalTokens || 0,
+        parsed: parsed.ok,
     };
 }
