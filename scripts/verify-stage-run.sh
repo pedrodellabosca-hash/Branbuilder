@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Verify stage run endpoint behavior
+# Verify stage run endpoint behavior with header checks
 # Usage: ./scripts/verify-stage-run.sh [base_url]
 # Exit 0 = OK, Exit 1 = FAIL
 
@@ -12,7 +12,7 @@ echo "🚀 Stage Run Verification Tests"
 echo "================================"
 echo ""
 
-# Test 1: POST to run without auth should return 401 JSON
+# Test 1: POST to run without auth should return 401 JSON with proper headers
 echo "Test 1: POST /api/projects/test/stages/naming/run (no auth -> 401)"
 RUN_RESPONSE=$(curl -si -X POST "${BASE_URL}/api/projects/test/stages/naming/run" \
     -H "Content-Type: application/json" 2>&1)
@@ -28,7 +28,20 @@ fi
 if echo "$RUN_RESPONSE" | grep -qi "content-type.*application/json"; then
     echo "  ✅ Content-Type: application/json"
 else
-    echo "  ⚠️  Warning: Response may not be JSON"
+    echo "  ❌ FAIL: Expected JSON content-type"
+    FAILED=1
+fi
+
+if echo "$RUN_RESPONSE" | grep -qi "cache-control.*no-store"; then
+    echo "  ✅ Cache-Control: no-store"
+else
+    echo "  ⚠️  Warning: Cache-Control no-store not found"
+fi
+
+if echo "$RUN_RESPONSE" | grep -qi "vary.*cookie"; then
+    echo "  ✅ Vary: Cookie"
+else
+    echo "  ⚠️  Warning: Vary: Cookie not found"
 fi
 
 # Check no redirect/rewrite
@@ -50,6 +63,20 @@ if echo "$OUTPUT_STATUS" | grep -qE '^HTTP/.* 401'; then
 else
     echo "  ❌ FAIL: Expected 401, got: $OUTPUT_STATUS"
     FAILED=1
+fi
+
+if echo "$OUTPUT_RESPONSE" | grep -qi "content-type.*application/json"; then
+    echo "  ✅ Content-Type: application/json"
+else
+    echo "  ❌ FAIL: Expected JSON content-type"
+    FAILED=1
+fi
+
+if echo "$OUTPUT_RESPONSE" | grep -qi '^location:'; then
+    echo "  ❌ FAIL: Found Location header (should not redirect)"
+    FAILED=1
+else
+    echo "  ✅ No redirect"
 fi
 echo ""
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Play, RefreshCw, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+import { Play, RefreshCw, CheckCircle, Loader2, AlertCircle, Clock, Sparkles } from "lucide-react";
 
 interface StageActionsProps {
     projectId: string;
@@ -15,6 +15,24 @@ interface StageActionsProps {
 }
 
 type JobStatus = "QUEUED" | "PROCESSING" | "DONE" | "FAILED";
+
+interface OutputVersion {
+    id: string;
+    version: number;
+    content: unknown;
+    provider: string | null;
+    model: string | null;
+    status: string;
+    type: string;
+    createdAt: string;
+}
+
+interface OutputData {
+    stage: { id: string; stageKey: string; name: string; status: string } | null;
+    output: { id: string; name: string; outputKey: string } | null;
+    versions: OutputVersion[];
+    latestVersion: OutputVersion | null;
+}
 
 export function StageActions({
     projectId,
@@ -33,6 +51,10 @@ export function StageActions({
         (initialJobStatus as JobStatus) || null
     );
 
+    // Output state (fetched from /output endpoint)
+    const [outputData, setOutputData] = useState<OutputData | null>(null);
+    const [isLoadingOutput, setIsLoadingOutput] = useState(false);
+
     const canGenerate = status === "NOT_STARTED";
     const canRegenerate = status === "GENERATED" || status === "APPROVED" || status === "REGENERATED";
     const canApprove = status === "GENERATED" || status === "REGENERATED";
@@ -41,6 +63,34 @@ export function StageActions({
     const COOLDOWN_MS = 900;
     const [cooldownUntil, setCooldownUntil] = useState(0);
     const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Fetch output data from /output endpoint
+    const fetchOutput = useCallback(async () => {
+        if (!projectId || !stageKey) return;
+
+        setIsLoadingOutput(true);
+        try {
+            const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/output`);
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error("Authentication required");
+                }
+                throw new Error("Error fetching output");
+            }
+            const data: OutputData = await response.json();
+            setOutputData(data);
+        } catch (err) {
+            console.error("[StageActions] Error fetching output:", err);
+            // Don't set error for initial load failures - just no data
+        } finally {
+            setIsLoadingOutput(false);
+        }
+    }, [projectId, stageKey]);
+
+    // Fetch output on mount and when status changes
+    useEffect(() => {
+        fetchOutput();
+    }, [fetchOutput, status]);
 
     // Cleanup timer on unmount
     useEffect(() => {
@@ -91,6 +141,9 @@ export function StageActions({
 
             if (!response.ok) {
                 const data = await response.json();
+                if (response.status === 401) {
+                    throw new Error("Authentication required");
+                }
                 throw new Error(data.error || "Error ejecutando etapa");
             }
 
@@ -105,7 +158,8 @@ export function StageActions({
 
             // Handle based on returned status
             if (data.status === "DONE") {
-                // DEV mode: job already completed, refresh directly
+                // DEV mode: job already completed, fetch output and refresh
+                await fetchOutput();
                 router.refresh();
             } else if (data.status === "FAILED") {
                 // Job failed immediately
@@ -137,6 +191,8 @@ export function StageActions({
 
                 if (data.status === "DONE" || data.status === "FAILED") {
                     if (data.status === "DONE") {
+                        // Fetch output first, then refresh page
+                        await fetchOutput();
                         router.refresh();
                     } else {
                         // Show error from failed job
@@ -220,8 +276,26 @@ export function StageActions({
         );
     };
 
+    const formatDate = (dateStr: string) => {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString("es", {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    };
+
+    const renderContent = (content: unknown): string => {
+        if (typeof content === "string") return content;
+        if (content && typeof content === "object") {
+            return JSON.stringify(content, null, 2);
+        }
+        return String(content || "");
+    };
+
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {/* Error message */}
             {error && (
                 <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
@@ -287,6 +361,71 @@ export function StageActions({
                 {status === "REGENERATED" && "Contenido regenerado. Revisa y aprueba cuando esté listo."}
                 {status === "BLOCKED" && "Esta etapa está bloqueada. Completa las etapas anteriores primero."}
             </div>
+
+            {/* Output Content Section */}
+            {isLoadingOutput && (
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Cargando contenido...
+                </div>
+            )}
+
+            {outputData?.latestVersion && (
+                <div className="space-y-4">
+                    {/* Latest Version Content */}
+                    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <Sparkles className="w-4 h-4 text-purple-400" />
+                                <span className="text-sm font-medium text-white">
+                                    Versión {outputData.latestVersion.version}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-400">
+                                {outputData.latestVersion.provider && (
+                                    <span className="bg-slate-700 px-2 py-0.5 rounded">
+                                        {outputData.latestVersion.provider}/{outputData.latestVersion.model || "default"}
+                                    </span>
+                                )}
+                                <span>{formatDate(outputData.latestVersion.createdAt)}</span>
+                            </div>
+                        </div>
+                        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
+                            <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
+                                {renderContent(outputData.latestVersion.content)}
+                            </pre>
+                        </div>
+                    </div>
+
+                    {/* Version History */}
+                    {outputData.versions.length > 1 && (
+                        <div className="border-t border-slate-800 pt-4">
+                            <h4 className="text-sm font-medium text-slate-400 mb-3 flex items-center gap-2">
+                                <Clock className="w-4 h-4" />
+                                Historial de versiones ({outputData.versions.length})
+                            </h4>
+                            <div className="space-y-2">
+                                {outputData.versions.slice(1).map((v) => (
+                                    <div
+                                        key={v.id}
+                                        className="flex items-center justify-between p-3 bg-slate-800/30 rounded-lg text-sm"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-white font-medium">v{v.version}</span>
+                                            <span className="text-slate-400 text-xs">
+                                                {v.provider || "manual"}/{v.model || "-"}
+                                            </span>
+                                        </div>
+                                        <span className="text-slate-500 text-xs">
+                                            {formatDate(v.createdAt)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
