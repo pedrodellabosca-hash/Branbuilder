@@ -18,19 +18,29 @@ export default clerkMiddleware(async (auth, request) => {
 export const config = {
     matcher: [
         /*
-         * Match all request paths EXCEPT:
-         * - _next (Next.js internals)
-         * - Static files (images, fonts, etc.)
-         * - Public API routes that bypass Clerk entirely:
-         *   - /api/ai/ping (and subpaths)
-         *   - /api/webhooks/clerk/* 
-         *   - /api/webhooks/stripe/*
+         * IMPORTANT: Middleware Matcher Configuration
+         * ============================================
          * 
-         * Regex uses (?:/|$) to match segment boundary:
-         * - /api/ai/ping → matches ($ = end of string)
-         * - /api/ai/ping/ → matches (/ after ping)
-         * - /api/ai/ping/foo → matches (/ after ping)
-         * - /api/ai/pingX → does NOT match (no / or $ after ping)
+         * This regex excludes certain paths from the Clerk middleware entirely.
+         * Excluded routes will NOT trigger any middleware code, meaning:
+         * - No x-clerk-* headers
+         * - No x-middleware-rewrite headers  
+         * - No auth.protect() checks
+         * 
+         * EXCLUDED ROUTES (by design):
+         * - api/ai/ping      → Health check endpoint (must be public)
+         * - api/webhooks/*   → Webhook endpoints (external services need access)
+         * 
+         * ⚠️  CRITICAL: DO NOT add leading slashes to paths in the lookahead!
+         * ⚠️  WRONG: '/api/ai/ping' - This breaks the exclusion
+         * ⚠️  RIGHT: 'api/ai/ping'  - Next.js matcher expects this format
+         * 
+         * The (?:/|$) suffix matches:
+         * - /api/ai/ping     ($ = end of string)
+         * - /api/ai/ping/    (/ = trailing slash)
+         * - /api/ai/ping/foo (/ = subpath)
+         * But NOT:
+         * - /api/ai/pingX    (no boundary after 'ping')
          */
         '/((?!_next|api/ai/ping(?:/|$)|api/webhooks/clerk(?:/|$)|api/webhooks/stripe(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     ],

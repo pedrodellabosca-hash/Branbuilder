@@ -16,6 +16,7 @@
     "db:reset": "prisma migrate reset",
     "worker": "npx tsx lib/jobs/worker.ts",
     "worker:start": "npx tsx lib/jobs/worker.ts",
+    "verify:ping": "./scripts/verify-ping.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {
