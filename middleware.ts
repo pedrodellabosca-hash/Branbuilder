@@ -36,8 +36,10 @@ export default clerkMiddleware(async (auth, request) => {
                 {
                     status: 401,
                     headers: {
-                        'Content-Type': 'application/json',
                         'Cache-Control': 'no-store, max-age=0',
+                        'Pragma': 'no-cache',
+                        'Expires': '0',
+                        'Vary': 'Cookie',
                     },
                 }
             )
