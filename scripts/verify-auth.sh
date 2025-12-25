@@ -10,15 +10,16 @@ echo "🔐 Auth Verification Tests"
 echo "=========================="
 echo ""
 
-# Test 1: /api/ai/ping should be 200 and public (no middleware)
-echo "Test 1: /api/ai/ping (should be 200, no x-clerk headers)"
+# Test 1: /api/ai/ping should be 200 and BYPASS middleware entirely
+# (no x-clerk-* headers, no x-middleware-* headers)
+echo "Test 1: /api/ai/ping (should bypass middleware completely)"
 PING_HEADERS=$(curl -sI "${BASE_URL}/api/ai/ping" 2>&1)
 
 if echo "$PING_HEADERS" | grep -qiE 'x-clerk|x-middleware'; then
-    echo "  ❌ FAIL: Found Clerk/middleware headers on ping"
+    echo "  ❌ FAIL: Found Clerk/middleware headers (ping should bypass)"
     FAILED=1
 else
-    echo "  ✅ No Clerk headers"
+    echo "  ✅ No Clerk/middleware headers"
 fi
 
 if echo "$PING_HEADERS" | grep -qE '^HTTP/.* 200'; then
@@ -30,7 +31,8 @@ fi
 echo ""
 
 # Test 2: /api/projects without auth should return 401 JSON
-echo "Test 2: /api/projects (should be 401 JSON, no redirect)"
+# (x-clerk-* headers are OK, but NO redirect/rewrite)
+echo "Test 2: /api/projects (should be 401 JSON, no redirect/rewrite)"
 PROJECTS_RESPONSE=$(curl -si "${BASE_URL}/api/projects" 2>&1)
 PROJECTS_STATUS=$(echo "$PROJECTS_RESPONSE" | head -1)
 PROJECTS_CONTENT_TYPE=$(echo "$PROJECTS_RESPONSE" | grep -i "content-type")
@@ -49,22 +51,33 @@ else
     FAILED=1
 fi
 
+if echo "$PROJECTS_RESPONSE" | grep -qi '^location:'; then
+    echo "  ❌ FAIL: Found Location header (should not redirect)"
+    FAILED=1
+else
+    echo "  ✅ No redirect (no Location header)"
+fi
+
 if echo "$PROJECTS_RESPONSE" | grep -qiE 'x-middleware-rewrite'; then
-    echo "  ❌ FAIL: Found x-middleware-rewrite (should not redirect)"
+    echo "  ❌ FAIL: Found x-middleware-rewrite (should not rewrite)"
     FAILED=1
 else
     echo "  ✅ No rewrite headers"
+fi
+
+# Note: x-clerk-* headers are allowed on protected API routes
+if echo "$PROJECTS_RESPONSE" | grep -qiE 'x-clerk'; then
+    echo "  ℹ️  x-clerk-* headers present (OK for protected routes)"
 fi
 echo ""
 
 # Test 3: UI route "/" should NOT return 401 JSON
 # Accept: 200 OK (public) or 30x redirect to sign-in (protected)
 # Fail if: 401 JSON or x-middleware-rewrite to /clerk_...
-echo "Test 3: / (UI route, should NOT return 401 JSON)"
+echo "Test 3: / (UI route, should be 200 or redirect, NOT 401)"
 HOME_RESPONSE=$(curl -sI "${BASE_URL}/" 2>&1)
 HOME_STATUS=$(echo "$HOME_RESPONSE" | head -1)
 
-# Check for bad patterns
 if echo "$HOME_RESPONSE" | grep -qiE 'x-middleware-rewrite.*clerk'; then
     echo "  ❌ FAIL: Found x-middleware-rewrite to Clerk"
     FAILED=1
