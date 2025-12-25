@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 # Verify auth behavior for different routes
 # Usage: ./scripts/verify-auth.sh [base_url]
 # Exit 0 = OK, Exit 1 = FAIL
@@ -30,13 +32,13 @@ else
 fi
 echo ""
 
-# Test 2: /api/projects without auth should return 401 JSON
+# Test 2: /api/projects without auth should return 401 JSON with proper headers
 # (x-clerk-* headers are OK, but NO redirect/rewrite)
-echo "Test 2: /api/projects (should be 401 JSON, no redirect/rewrite)"
+echo "Test 2: /api/projects (should be 401 JSON with no-cache headers)"
 PROJECTS_RESPONSE=$(curl -si "${BASE_URL}/api/projects" 2>&1)
 PROJECTS_STATUS=$(echo "$PROJECTS_RESPONSE" | head -1)
-PROJECTS_CONTENT_TYPE=$(echo "$PROJECTS_RESPONSE" | grep -i "content-type")
 
+# Check status
 if echo "$PROJECTS_STATUS" | grep -qE '^HTTP/.* 401'; then
     echo "  ✅ Status: 401 Unauthorized"
 else
@@ -44,13 +46,29 @@ else
     FAILED=1
 fi
 
-if echo "$PROJECTS_CONTENT_TYPE" | grep -qi "application/json"; then
+# Check content-type
+if echo "$PROJECTS_RESPONSE" | grep -qi "content-type.*application/json"; then
     echo "  ✅ Content-Type: application/json"
 else
-    echo "  ❌ FAIL: Expected JSON, got: $PROJECTS_CONTENT_TYPE"
+    echo "  ❌ FAIL: Expected application/json"
     FAILED=1
 fi
 
+# Check cache-control
+if echo "$PROJECTS_RESPONSE" | grep -qi "cache-control.*no-store"; then
+    echo "  ✅ Cache-Control: no-store"
+else
+    echo "  ⚠️  Warning: Cache-Control no-store not found"
+fi
+
+# Check Vary header
+if echo "$PROJECTS_RESPONSE" | grep -qi "vary.*cookie"; then
+    echo "  ✅ Vary: Cookie"
+else
+    echo "  ⚠️  Warning: Vary: Cookie not found"
+fi
+
+# Check NO redirect
 if echo "$PROJECTS_RESPONSE" | grep -qi '^location:'; then
     echo "  ❌ FAIL: Found Location header (should not redirect)"
     FAILED=1
@@ -58,6 +76,7 @@ else
     echo "  ✅ No redirect (no Location header)"
 fi
 
+# Check NO rewrite
 if echo "$PROJECTS_RESPONSE" | grep -qiE 'x-middleware-rewrite'; then
     echo "  ❌ FAIL: Found x-middleware-rewrite (should not rewrite)"
     FAILED=1
