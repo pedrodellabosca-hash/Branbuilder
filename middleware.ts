@@ -1,16 +1,49 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { NextResponse } from 'next/server'
 
 /**
- * Public routes for UI pages (still run middleware but skip auth.protect)
+ * Public routes for UI pages (still run middleware but skip auth)
  */
 const isPublicRoute = createRouteMatcher([
     '/sign-in(.*)',
     '/sign-up(.*)',
 ])
 
+/**
+ * Check if path is an API route
+ */
+function isApiRoute(pathname: string): boolean {
+    return pathname.startsWith('/api/') || pathname.startsWith('/trpc/')
+}
+
 export default clerkMiddleware(async (auth, request) => {
-    // Protect all routes except public ones
-    if (!isPublicRoute(request)) {
+    const { pathname } = request.nextUrl
+
+    // Skip public routes
+    if (isPublicRoute(request)) {
+        return
+    }
+
+    // Get auth state
+    const { userId } = await auth()
+
+    // If no user session
+    if (!userId) {
+        // API routes: return 401 JSON (not redirect)
+        if (isApiRoute(pathname)) {
+            return NextResponse.json(
+                { error: 'Unauthorized', message: 'Authentication required' },
+                {
+                    status: 401,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-store, max-age=0',
+                    },
+                }
+            )
+        }
+
+        // Non-API routes: redirect to sign-in (normal Clerk behavior)
         await auth.protect()
     }
 })
@@ -25,7 +58,7 @@ export const config = {
          * Excluded routes will NOT trigger any middleware code, meaning:
          * - No x-clerk-* headers
          * - No x-middleware-rewrite headers  
-         * - No auth.protect() checks
+         * - No auth checks of any kind
          * 
          * EXCLUDED ROUTES (by design):
          * - api/ai/ping      → Health check endpoint (must be public)

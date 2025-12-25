@@ -17,6 +17,7 @@
     "worker": "npx tsx lib/jobs/worker.ts",
     "worker:start": "npx tsx lib/jobs/worker.ts",
     "verify:ping": "./scripts/verify-ping.sh",
+    "verify:auth": "./scripts/verify-auth.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {
