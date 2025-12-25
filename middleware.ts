@@ -32,6 +32,6 @@ export const config = {
          * - /api/ai/ping/foo → matches (/ after ping)
          * - /api/ai/pingX → does NOT match (no / or $ after ping)
          */
-        '/((?!_next|/api/ai/ping(?:/|$)|/api/webhooks/clerk(?:/|$)|/api/webhooks/stripe(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+        '/((?!_next|api/ai/ping(?:/|$)|api/webhooks/clerk(?:/|$)|api/webhooks/stripe(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     ],
 }
