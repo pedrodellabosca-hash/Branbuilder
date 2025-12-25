@@ -21,7 +21,8 @@
     "verify:auth": "./scripts/verify-auth.sh",
     "verify:stage": "./scripts/verify-stage-run.sh",
     "verify:openai": "./scripts/verify-openai.sh",
-    "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai",
+    "verify:output": "./scripts/verify-output.sh",
+    "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
     "postinstall": "prisma generate"
   },
   "dependencies": {
