@@ -54,7 +54,7 @@ export function StageActions({
     // Deterministic: in cooldown if value > 0
     const inCooldown = cooldownUntil > 0;
 
-    const enqueueJob = async (type: "GENERATE_OUTPUT" | "REGENERATE_OUTPUT") => {
+    const enqueueJob = async () => {
         // Guard: prevent double-click and cooldown
         if (isLoading || inCooldown) return;
 
@@ -62,8 +62,8 @@ export function StageActions({
         setError(null);
 
         // Validate projectId is present (before cooldown so error doesn't trigger cooldown)
-        if (!projectId) {
-            setError("Error: projectId no disponible");
+        if (!projectId || !stageKey) {
+            setError("Error: projectId o stageKey no disponible");
             setIsLoading(false);
             return;
         }
@@ -80,29 +80,28 @@ export function StageActions({
             cooldownTimerRef.current = null;
         }, COOLDOWN_MS);
 
-        console.log("[StageActions] Enqueuing job:", { type, projectId, stageId, stageKey, module });
+        console.log("[StageActions] Running stage:", { projectId, stageKey });
 
         try {
-            const response = await fetch("/api/jobs", {
+            // Use new /run endpoint (handles idempotency server-side)
+            const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    type,
-                    projectId,
-                    module,
-                    stage: stageKey,
-                    payload: { stageId },
-                }),
             });
 
             if (!response.ok) {
                 const data = await response.json();
-                throw new Error(data.error || "Error encolando job");
+                throw new Error(data.error || "Error ejecutando etapa");
             }
 
             const data = await response.json();
             setJobId(data.jobId);
             setJobStatus(data.status || "QUEUED");
+
+            // If idempotent response (job already running), continue polling
+            if (data.idempotent) {
+                console.log("[StageActions] Job already in progress:", data.jobId);
+            }
 
             // Handle based on returned status
             if (data.status === "DONE") {
@@ -112,7 +111,7 @@ export function StageActions({
                 // Job failed immediately
                 setError(data.error || "El job falló durante el procesamiento");
             } else {
-                // PROD mode: start polling
+                // Start polling
                 pollJobStatus(data.jobId);
             }
         } catch (err) {
@@ -238,7 +237,7 @@ export function StageActions({
             <div className="flex flex-wrap gap-3">
                 {/* Generate button */}
                 <button
-                    onClick={() => enqueueJob("GENERATE_OUTPUT")}
+                    onClick={enqueueJob}
                     disabled={!canGenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
                 >
@@ -252,7 +251,7 @@ export function StageActions({
 
                 {/* Regenerate button */}
                 <button
-                    onClick={() => enqueueJob("REGENERATE_OUTPUT")}
+                    onClick={enqueueJob}
                     disabled={!canRegenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
                 >
