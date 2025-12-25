@@ -5,7 +5,7 @@ set -euo pipefail
 # Authenticated E2E Verification Script
 # =============================================================================
 #
-# Tests the full authenticated flow: projects -> stage run -> output
+# Tests the full authenticated pipeline: Naming → Voice → Visual
 #
 # USAGE:
 #   Option A (env variable):
@@ -23,12 +23,205 @@ set -euo pipefail
 #
 # IMPORTANT: Cookie value is never printed in logs
 #
+# REQUIREMENTS:
+#   - Dev server running (npm run dev)
+#   - Worker running (npm run worker:start) - optional but recommended
+#
 # =============================================================================
 
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 FAILED=0
 
-# Get cookie from env or prompt
+# Job IDs for summary
+JOB_ID_NAMING=""
+JOB_ID_VOICE=""
+JOB_ID_VISUAL=""
+PROJECT_ID=""
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+poll_job() {
+    local job_id="$1"
+    local stage_name="$2"
+    local max_attempts="${3:-90}"
+    local attempt=0
+    local final_status=""
+
+    while [ $attempt -lt $max_attempts ]; do
+        local job_poll
+        job_poll=$(curl -s "${BASE_URL}/api/jobs/${job_id}" \
+            -H "Accept: application/json" \
+            -H "Cookie: ${COOKIE}" \
+            2>&1)
+        
+        local current_status
+        current_status=$(echo "$job_poll" | grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
+        
+        if [ "$current_status" = "DONE" ] || [ "$current_status" = "FAILED" ]; then
+            final_status="$current_status"
+            if [ "$current_status" = "FAILED" ]; then
+                local job_error
+                job_error=$(echo "$job_poll" | grep -oE '"error"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4 || echo "unknown")
+                echo "  ❌ Job FAILED: $job_error"
+                FAILED=1
+                return 1
+            fi
+            echo "  ✅ Job completed: $final_status"
+            return 0
+        fi
+        
+        attempt=$((attempt + 1))
+        printf "  ⏳ Polling %s... (%ds) status=%s\r" "$stage_name" "$attempt" "$current_status"
+        sleep 1
+    done
+
+    echo ""
+    echo "  ❌ Timeout waiting for $stage_name job (${max_attempts}s)"
+    FAILED=1
+    return 1
+}
+
+validate_output() {
+    local stage_key="$1"
+    local stage_name="$2"
+
+    echo ""
+    echo "GET /api/projects/{id}/stages/${stage_key}/output"
+    echo "---------------------------------------------------"
+
+    local output_response
+    output_response=$(curl -s "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/output" \
+        -H "Accept: application/json" \
+        -H "Cookie: ${COOKIE}" \
+        2>&1)
+    local output_status
+    output_status=$(curl -sI "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/output" \
+        -H "Accept: application/json" \
+        -H "Cookie: ${COOKIE}" \
+        2>&1 | head -1)
+
+    if echo "$output_status" | grep -qE '^HTTP/.* 200'; then
+        echo "  ✅ Status: 200 OK"
+    else
+        echo "  ❌ FAIL: Expected 200, got: $output_status"
+        FAILED=1
+        return 1
+    fi
+
+    # Check for versions array
+    if echo "$output_response" | grep -q '"versions"'; then
+        # Check if versions is non-empty array
+        if echo "$output_response" | grep -qE '"versions"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{'; then
+            echo "  ✅ versions array is non-empty"
+        else
+            echo "  ⚠️  Warning: versions may be empty"
+        fi
+    else
+        echo "  ❌ FAIL: No versions in response"
+        FAILED=1
+    fi
+
+    # Check for latestVersion
+    if echo "$output_response" | grep -q '"latestVersion"'; then
+        echo "  ✅ Response contains latestVersion"
+        
+        # Check latestVersion.content exists and not null/empty
+        if echo "$output_response" | grep -qE '"latestVersion"[[:space:]]*:[[:space:]]*\{[^}]*"content"[[:space:]]*:[[:space:]]*[^n]'; then
+            echo "  ✅ latestVersion.content exists"
+        elif echo "$output_response" | grep -qE '"content"[[:space:]]*:[[:space:]]*\{'; then
+            echo "  ✅ latestVersion.content exists (object)"
+        else
+            echo "  ⚠️  Warning: latestVersion.content may be null"
+        fi
+        
+        # Check version number if present
+        if echo "$output_response" | grep -qE '"version"[[:space:]]*:[[:space:]]*[0-9]+'; then
+            echo "  ✅ version number present"
+        fi
+        
+        # Check createdAt if present
+        if echo "$output_response" | grep -qE '"createdAt"[[:space:]]*:'; then
+            echo "  ✅ createdAt present"
+        fi
+    else
+        echo "  ❌ FAIL: No latestVersion in response"
+        FAILED=1
+    fi
+}
+
+run_stage() {
+    local stage_key="$1"
+    local stage_name="$2"
+    local timeout="${3:-90}"
+    local job_var_name="$4"
+
+    echo ""
+    echo "POST /api/projects/{id}/stages/${stage_key}/run"
+    echo "-------------------------------------------------"
+
+    local run_response
+    run_response=$(curl -s -X POST "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/run" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        -H "Cookie: ${COOKIE}" \
+        2>&1)
+    local run_status
+    run_status=$(curl -sI -X POST "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/run" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        -H "Cookie: ${COOKIE}" \
+        2>&1 | head -1)
+
+    if echo "$run_status" | grep -qE '^HTTP/.* (200|201)'; then
+        echo "  ✅ Status: 200/201 OK"
+    else
+        echo "  ❌ FAIL: Expected 200/201, got: $run_status"
+        echo "  Response: $run_response"
+        FAILED=1
+        return 1
+    fi
+
+    local job_id
+    job_id=$(echo "$run_response" | grep -oE '"jobId"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
+    local job_status
+    job_status=$(echo "$run_response" | grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
+
+    if [ -n "$job_id" ]; then
+        echo "  ✅ Job ID: $job_id"
+        echo "  ℹ️  Initial status: $job_status"
+        
+        # Store job ID in appropriate variable
+        case "$job_var_name" in
+            naming) JOB_ID_NAMING="$job_id" ;;
+            voice) JOB_ID_VOICE="$job_id" ;;
+            visual) JOB_ID_VISUAL="$job_id" ;;
+        esac
+        
+        # If already DONE, skip polling
+        if [ "$job_status" = "DONE" ]; then
+            echo "  ✅ Job already completed: DONE"
+            return 0
+        fi
+        
+        # Poll for completion
+        echo ""
+        echo "Poll /api/jobs/{jobId} (${stage_name})"
+        echo "--------------------------------------"
+        poll_job "$job_id" "$stage_name" "$timeout"
+    else
+        echo "  ❌ FAIL: No jobId in response"
+        echo "  Response: $run_response"
+        FAILED=1
+        return 1
+    fi
+}
+
+# =============================================================================
+# GET COOKIE
+# =============================================================================
+
 COOKIE=""
 if [ -n "${CLERK_COOKIE:-}" ]; then
     COOKIE="$CLERK_COOKIE"
@@ -51,11 +244,15 @@ if [[ "$COOKIE" != *"="* ]]; then
 fi
 
 echo ""
-echo "🧪 Authenticated E2E Verification"
-echo "=================================="
+echo "🧪 Authenticated E2E Verification (Full Pipeline)"
+echo "=================================================="
+echo "   Stages: Naming → Voice → Visual"
 echo ""
 
-# Check server is running
+# =============================================================================
+# STEP 0: CHECK SERVER
+# =============================================================================
+
 echo "Step 0: Check server"
 echo "--------------------"
 if ! curl -s --connect-timeout 2 "${BASE_URL}" > /dev/null 2>&1; then
@@ -64,11 +261,12 @@ if ! curl -s --connect-timeout 2 "${BASE_URL}" > /dev/null 2>&1; then
     exit 1
 fi
 echo "  ✅ Server is running"
-echo ""
 
 # =============================================================================
-# Step 1: GET /api/projects
+# STEP 1: GET PROJECTS
 # =============================================================================
+
+echo ""
 echo "Step 1: GET /api/projects"
 echo "-------------------------"
 
@@ -95,17 +293,15 @@ else
 fi
 
 # =============================================================================
-# Step 2: Get or create project
+# STEP 2: GET OR CREATE PROJECT
 # =============================================================================
+
 echo ""
 echo "Step 2: Get or create project"
 echo "-----------------------------"
 
-PROJECT_ID=""
-
 # Try to parse projects array
 if echo "$PROJECTS_RESPONSE" | grep -q '"id"'; then
-    # Has at least one project - extract first id
     PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
 fi
 
@@ -132,142 +328,69 @@ else
 fi
 
 # =============================================================================
-# Step 3: Run stage
+# STEP 3-4: NAMING STAGE
 # =============================================================================
-echo ""
-echo "Step 3: POST /api/projects/{id}/stages/naming/run"
-echo "-------------------------------------------------"
-
-RUN_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/projects/${PROJECT_ID}/stages/naming/run" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json" \
-    -H "Cookie: ${COOKIE}" \
-    2>&1)
-RUN_STATUS=$(curl -sI -X POST "${BASE_URL}/api/projects/${PROJECT_ID}/stages/naming/run" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json" \
-    -H "Cookie: ${COOKIE}" \
-    2>&1 | head -1)
-
-if echo "$RUN_STATUS" | grep -qE '^HTTP/.* (200|201)'; then
-    echo "  ✅ Status: 200/201 OK"
-else
-    echo "  ❌ FAIL: Expected 200/201, got: $RUN_STATUS"
-    echo "  Response: $RUN_RESPONSE"
-    FAILED=1
-fi
-
-JOB_ID=$(echo "$RUN_RESPONSE" | grep -oE '"jobId"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
-JOB_STATUS=$(echo "$RUN_RESPONSE" | grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
-
-if [ -n "$JOB_ID" ]; then
-    echo "  ✅ Job ID: $JOB_ID"
-    echo "  ℹ️  Initial status: $JOB_STATUS"
-else
-    echo "  ❌ FAIL: No jobId in response"
-    echo "  Response: $RUN_RESPONSE"
-    exit 1
-fi
-
-# =============================================================================
-# Step 4: Poll job status
-# =============================================================================
-echo ""
-echo "Step 4: Poll /api/jobs/{jobId}"
-echo "------------------------------"
-
-MAX_ATTEMPTS=60
-ATTEMPT=0
-FINAL_STATUS=""
-
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    JOB_POLL=$(curl -s "${BASE_URL}/api/jobs/${JOB_ID}" \
-        -H "Accept: application/json" \
-        -H "Cookie: ${COOKIE}" \
-        2>&1)
-    
-    CURRENT_STATUS=$(echo "$JOB_POLL" | grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
-    
-    if [ "$CURRENT_STATUS" = "DONE" ] || [ "$CURRENT_STATUS" = "FAILED" ]; then
-        FINAL_STATUS="$CURRENT_STATUS"
-        break
-    fi
-    
-    ATTEMPT=$((ATTEMPT + 1))
-    printf "  ⏳ Waiting... (%ds) status=%s\r" "$ATTEMPT" "$CURRENT_STATUS"
-    sleep 1
-done
 
 echo ""
-if [ "$FINAL_STATUS" = "DONE" ]; then
-    echo "  ✅ Job completed: DONE"
-elif [ "$FINAL_STATUS" = "FAILED" ]; then
-    echo "  ❌ Job completed: FAILED"
-    JOB_ERROR=$(echo "$JOB_POLL" | grep -oE '"error"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
-    echo "  Error: $JOB_ERROR"
-    FAILED=1
-else
-    echo "  ❌ Timeout waiting for job (${MAX_ATTEMPTS}s)"
-    FAILED=1
+echo "═══════════════════════════════════════"
+echo "  STAGE 1: NAMING"
+echo "═══════════════════════════════════════"
+
+run_stage "naming" "Naming" 60 "naming"
+if [ $FAILED -eq 0 ]; then
+    validate_output "naming" "Naming"
 fi
 
 # =============================================================================
-# Step 5: GET output
+# STEP 5-6: VOICE STAGE
 # =============================================================================
+
 echo ""
-echo "Step 5: GET /api/projects/{id}/stages/naming/output"
-echo "---------------------------------------------------"
+echo "═══════════════════════════════════════"
+echo "  STAGE 2: VOICE"
+echo "═══════════════════════════════════════"
 
-OUTPUT_RESPONSE=$(curl -s "${BASE_URL}/api/projects/${PROJECT_ID}/stages/naming/output" \
-    -H "Accept: application/json" \
-    -H "Cookie: ${COOKIE}" \
-    2>&1)
-OUTPUT_STATUS=$(curl -sI "${BASE_URL}/api/projects/${PROJECT_ID}/stages/naming/output" \
-    -H "Accept: application/json" \
-    -H "Cookie: ${COOKIE}" \
-    2>&1 | head -1)
-
-if echo "$OUTPUT_STATUS" | grep -qE '^HTTP/.* 200'; then
-    echo "  ✅ Status: 200 OK"
-else
-    echo "  ❌ FAIL: Expected 200, got: $OUTPUT_STATUS"
-    FAILED=1
-fi
-
-# Check for versions
-if echo "$OUTPUT_RESPONSE" | grep -q '"versions"'; then
-    echo "  ✅ Response contains versions array"
-else
-    echo "  ❌ FAIL: No versions in response"
-    FAILED=1
-fi
-
-# Check for latestVersion with content
-if echo "$OUTPUT_RESPONSE" | grep -q '"latestVersion"'; then
-    echo "  ✅ Response contains latestVersion"
-    if echo "$OUTPUT_RESPONSE" | grep -q '"content"'; then
-        echo "  ✅ latestVersion has content"
-    else
-        echo "  ⚠️  Warning: latestVersion may not have content"
-    fi
-else
-    echo "  ⚠️  Warning: No latestVersion (may be first run)"
+run_stage "voice" "Voice" 90 "voice"
+if [ $FAILED -eq 0 ]; then
+    validate_output "voice" "Voice"
 fi
 
 # =============================================================================
-# Summary
+# STEP 7-8: VISUAL IDENTITY STAGE
 # =============================================================================
+
 echo ""
-echo "=================================="
+echo "═══════════════════════════════════════"
+echo "  STAGE 3: VISUAL IDENTITY"
+echo "═══════════════════════════════════════"
+
+run_stage "visual_identity" "Visual Identity" 120 "visual"
+if [ $FAILED -eq 0 ]; then
+    validate_output "visual_identity" "Visual Identity"
+fi
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+echo ""
+echo "=================================================="
 if [ $FAILED -eq 0 ]; then
     echo "✅ All authenticated E2E tests passed!"
     echo ""
     echo "Summary:"
-    echo "  - Project: $PROJECT_ID"
-    echo "  - Stage: naming"
-    echo "  - Job: $JOB_ID ($FINAL_STATUS)"
+    echo "  Project: $PROJECT_ID"
+    echo "  ├─ Naming:   ${JOB_ID_NAMING:-skipped}"
+    echo "  ├─ Voice:    ${JOB_ID_VOICE:-skipped}"
+    echo "  └─ Visual:   ${JOB_ID_VISUAL:-skipped}"
     exit 0
 else
     echo "❌ Some tests failed"
+    echo ""
+    echo "Summary:"
+    echo "  Project: $PROJECT_ID"
+    echo "  ├─ Naming:   ${JOB_ID_NAMING:-failed}"
+    echo "  ├─ Voice:    ${JOB_ID_VOICE:-failed}"
+    echo "  └─ Visual:   ${JOB_ID_VISUAL:-failed}"
     exit 1
 fi
