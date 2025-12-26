@@ -55,6 +55,9 @@ export interface EffectiveConfig extends RunConfig {
 
     // Preset-specific config
     presetConfig: Record<string, unknown>;
+
+    // Runtime metadata
+    fallbackWarning?: string;
 }
 
 // =============================================================================

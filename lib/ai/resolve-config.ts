@@ -113,6 +113,7 @@ export function serializeConfig(config: EffectiveConfig): Record<string, unknown
         seedText: config.seedText,
         estimatedTokens: config.estimatedTokens,
         presetConfig: config.presetConfig,
+        fallbackWarning: config.fallbackWarning,
     };
 }
 
@@ -135,5 +136,6 @@ export function deserializeConfig(payload: Record<string, unknown>): EffectiveCo
         estimatedTokens: (payload.estimatedTokens as number) || 1500,
         presetConfig: (payload.presetConfig as Record<string, unknown>) || {},
         seedText: (payload.seedText as string) || undefined,
+        fallbackWarning: (payload.fallbackWarning as string) || undefined,
     };
 }

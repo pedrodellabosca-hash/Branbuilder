@@ -183,6 +183,28 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
         temperature: params.temperature,
     });
 
+    // Validate Model Availability & Fallback
+    // If the resolved model is not in our registry (e.g. removed or invalid),
+    // fallback to the default model for the effective preset.
+    const { isModelAvailable, getDefaultsByPreset } = await import("@/lib/ai/model-registry");
+    const isAvailable = await isModelAvailable(effectiveConfig.model);
+
+    let fallbackWarning: string | undefined;
+
+    if (!isAvailable) {
+        const defaults = getDefaultsByPreset();
+        const fallback = defaults[effectiveConfig.preset];
+
+        console.warn(`[runStage] Model '${effectiveConfig.model}' not available. Falling back to '${fallback.model}'`);
+
+        fallbackWarning = `Model '${effectiveConfig.model}' unavailable. Used fallback: ${fallback.model}`;
+
+        // Apply fallback
+        effectiveConfig.model = fallback.model;
+        effectiveConfig.provider = fallback.provider;
+        effectiveConfig.fallbackWarning = fallbackWarning;
+    }
+
     // Check token budget before proceeding
     const budget = await checkTokenBudget(org.id, effectiveConfig.estimatedTokens);
 
@@ -405,6 +427,7 @@ async function processStageJob(
                     preset: effectiveConfig.preset, // Persist preset
                     validated: !validationError,
                     validationError: validationError || undefined,
+                    fallbackWarning: effectiveConfig.fallbackWarning,
                 },
                 createdBy: userId,
                 type: "GENERATED",
