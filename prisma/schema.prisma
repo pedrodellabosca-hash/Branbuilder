@@ -319,6 +319,9 @@ model Stage {
   lockedBy    String?     // userId
   lockedAt    DateTime?
   
+  // AI Config (Persistent per stage)
+  config      Json?       // { provider, model, preset, ... }
+  
   // Relations
   outputs     Output[]
   comments    Comment[]

@@ -33,6 +33,7 @@ export interface ResolveConfigParams {
     model?: string;
     temperature?: number;
     customInstructions?: string;
+    seedText?: string;
 }
 
 /**
@@ -84,6 +85,7 @@ export function resolveEffectiveConfig(params: ResolveConfigParams): EffectiveCo
         temperature: params.temperature ?? DEFAULT_CONFIG.temperature,
         maxOutputTokens,
         customInstructions: params.customInstructions,
+        seedText: params.seedText,
 
         // Resolved values
         resolvedMaxTokens: maxOutputTokens,
@@ -108,6 +110,7 @@ export function serializeConfig(config: EffectiveConfig): Record<string, unknown
         temperature: config.temperature,
         maxOutputTokens: config.maxOutputTokens,
         customInstructions: config.customInstructions,
+        seedText: config.seedText,
         estimatedTokens: config.estimatedTokens,
         presetConfig: config.presetConfig,
     };
@@ -131,5 +134,6 @@ export function deserializeConfig(payload: Record<string, unknown>): EffectiveCo
         resolvedMaxTokens: (payload.maxOutputTokens as number) || 1200,
         estimatedTokens: (payload.estimatedTokens as number) || 1500,
         presetConfig: (payload.presetConfig as Record<string, unknown>) || {},
+        seedText: (payload.seedText as string) || undefined,
     };
 }

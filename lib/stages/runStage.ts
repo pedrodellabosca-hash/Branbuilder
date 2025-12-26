@@ -34,6 +34,7 @@ export interface RunStageParams {
     provider?: string;
     model?: string;
     temperature?: number;
+    seedText?: string;
 }
 
 export interface RunStageResult {
@@ -56,6 +57,7 @@ export interface RunStageResult {
 
 // Stage definitions for auto-creation
 const STAGE_DEFINITIONS: Record<string, { name: string; module: "A" | "B"; order: number }> = {
+    context: { name: "Contexto", module: "A", order: 0 },
     naming: { name: "Naming", module: "A", order: 1 },
     manifesto: { name: "Manifiesto de Marca", module: "A", order: 2 },
     voice: { name: "Voz de Marca", module: "A", order: 3 },
@@ -170,11 +172,14 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
     }
 
     // Resolve effective configuration
+    // Use persisted config from stage if available (and not overridden by params)
+    const savedConfig: any = (stage as any).config || {};
+
     const effectiveConfig = resolveEffectiveConfig({
         stageKey,
-        preset: params.preset,
-        provider: params.provider,
-        model: params.model,
+        preset: params.preset || savedConfig.preset,
+        provider: params.provider || savedConfig.provider,
+        model: params.model || savedConfig.model,
         temperature: params.temperature,
     });
 
@@ -325,13 +330,14 @@ async function processStageJob(
         });
 
         // Get AI provider and generate content
-        const provider = getAIProvider();
-        console.log(`[runStage] Calling AI provider: ${provider.type}`);
+        const provider = getAIProvider(effectiveConfig.provider);
+        console.log(`[runStage] Calling AI provider: ${provider.type} with model: ${effectiveConfig.model}`);
 
         const aiResponse = await provider.complete({
             messages,
             temperature: effectiveConfig.temperature || 0.7,
             maxTokens: effectiveConfig.resolvedMaxTokens,
+            model: effectiveConfig.model,
         });
 
         const latencyMs = Date.now() - startTime;
@@ -396,6 +402,7 @@ async function processStageJob(
                     tokensIn: aiResponse.usage?.promptTokens || 0,
                     tokensOut: aiResponse.usage?.completionTokens || 0,
                     totalTokens: aiResponse.usage?.totalTokens || 0,
+                    preset: effectiveConfig.preset, // Persist preset
                     validated: !validationError,
                     validationError: validationError || undefined,
                 },

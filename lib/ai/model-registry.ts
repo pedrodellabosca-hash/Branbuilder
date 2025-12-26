@@ -46,6 +46,7 @@ export interface ModelDescriptor {
 }
 
 export interface ModelsResponse {
+    activeProvider: Provider;
     providers: Provider[];
     models: ModelDescriptor[];
     defaultsByPreset: Record<PresetLevel, { provider: Provider; model: string }>;
@@ -354,6 +355,7 @@ export async function getModelsResponse(): Promise<ModelsResponse> {
     const models = await getModels();
 
     return {
+        activeProvider: (process.env.AI_PROVIDER as Provider) || "OPENAI",
         providers: getProviders(),
         models,
         defaultsByPreset: getDefaultsByPreset(),
