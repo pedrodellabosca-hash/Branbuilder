@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { TokenBudgetBar, TokenEstimate } from "./TokenBudgetBar";
+import { useState, useEffect } from "react";
+import { TokenBudgetBar } from "./TokenBudgetBar";
+import { useModels, isLegacyModel, getLegacyModelPlaceholder } from "@/hooks/useModels";
+import type { ModelDescriptor, Provider } from "@/hooks/useModels";
 
 // Preset info for display
 const PRESET_INFO = {
@@ -28,20 +30,11 @@ const PRESET_INFO = {
     },
 };
 
-// Available models
-const MODELS = [
-    { provider: "OPENAI", model: "gpt-4o-mini", name: "GPT-4o Mini", speed: "Muy rápido", quality: "Bueno" },
-    { provider: "OPENAI", model: "gpt-4o", name: "GPT-4o", speed: "Rápido", quality: "Excelente" },
-    { provider: "ANTHROPIC", model: "claude-3-5-haiku-latest", name: "Claude 3.5 Haiku", speed: "Muy rápido", quality: "Bueno" },
-    { provider: "ANTHROPIC", model: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet", speed: "Rápido", quality: "Excelente" },
-];
-
 // Token estimates per stage and preset
 const TOKEN_ESTIMATES: Record<string, Record<string, number>> = {
     naming: { fast: 800, balanced: 1500, quality: 3000 },
     voice: { fast: 1000, balanced: 2000, quality: 4000 },
     visual_identity: { fast: 1200, balanced: 3000, quality: 5000 },
-    // Generic fallback
     default: { fast: 800, balanced: 1800, quality: 3500 },
 };
 
@@ -50,6 +43,7 @@ type PresetLevel = "fast" | "balanced" | "quality";
 interface StageConfigSelectorProps {
     stageKey: string;
     stageName: string;
+    initialModel?: string;
     onConfigChange?: (config: { preset: PresetLevel; provider: string; model: string }) => void;
     className?: string;
 }
@@ -57,33 +51,110 @@ interface StageConfigSelectorProps {
 export function StageConfigSelector({
     stageKey,
     stageName,
+    initialModel,
     onConfigChange,
     className = "",
 }: StageConfigSelectorProps) {
+    const { models, loading, defaultsByPreset, getRecommendedModel, isModelAvailable } = useModels();
+
     const [preset, setPreset] = useState<PresetLevel>("balanced");
-    const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+    const [selectedModelId, setSelectedModelId] = useState<string | null>(initialModel || null);
     const [showModelPicker, setShowModelPicker] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const estimates = TOKEN_ESTIMATES[stageKey] || TOKEN_ESTIMATES.default;
     const estimatedTokens = estimates[preset];
 
+    // Get the selected model descriptor
+    const selectedModel: ModelDescriptor | null = selectedModelId
+        ? models.find(m => m.id === selectedModelId) ||
+        (isLegacyModel(selectedModelId, models) ? getLegacyModelPlaceholder(selectedModelId) : null)
+        : getRecommendedModel(preset);
+
+    // Check if selected model is legacy/unavailable
+    const isLegacy = selectedModelId ? !isModelAvailable(selectedModelId) : false;
+
+    // Group models by provider
+    const modelsByProvider = models.reduce<Record<Provider, ModelDescriptor[]>>((acc, model) => {
+        if (!acc[model.provider]) {
+            acc[model.provider] = [];
+        }
+        acc[model.provider].push(model);
+        return acc;
+    }, {} as Record<Provider, ModelDescriptor[]>);
+
+    // Set default model when preset changes
+    useEffect(() => {
+        if (!selectedModelId && defaultsByPreset) {
+            const defaultConfig = defaultsByPreset[preset];
+            setSelectedModelId(defaultConfig.model);
+        }
+    }, [preset, defaultsByPreset, selectedModelId]);
+
     const handlePresetChange = (newPreset: PresetLevel) => {
         setPreset(newPreset);
-        onConfigChange?.({
-            preset: newPreset,
-            provider: selectedModel.provider,
-            model: selectedModel.model,
-        });
+
+        // Update to recommended model for this preset if not manually selected
+        if (!showAdvanced) {
+            const defaultConfig = defaultsByPreset[newPreset];
+            setSelectedModelId(defaultConfig.model);
+            onConfigChange?.({
+                preset: newPreset,
+                provider: defaultConfig.provider,
+                model: defaultConfig.model,
+            });
+        } else if (selectedModel) {
+            onConfigChange?.({
+                preset: newPreset,
+                provider: selectedModel.provider,
+                model: selectedModel.id,
+            });
+        }
     };
 
-    const handleModelChange = (model: typeof MODELS[0]) => {
-        setSelectedModel(model);
+    const handleModelChange = (model: ModelDescriptor) => {
+        setSelectedModelId(model.id);
         setShowModelPicker(false);
         onConfigChange?.({
             preset,
             provider: model.provider,
-            model: model.model,
+            model: model.id,
         });
+    };
+
+    const handleUseRecommended = () => {
+        const recommended = getRecommendedModel(preset);
+        if (recommended) {
+            handleModelChange(recommended);
+        }
+    };
+
+    const getProviderIcon = (provider: Provider) => {
+        switch (provider) {
+            case "OPENAI": return "🤖";
+            case "ANTHROPIC": return "🔮";
+            case "MOCK": return "🧪";
+            default: return "🤖";
+        }
+    };
+
+    const getSpeedLabel = (speed: string) => {
+        switch (speed) {
+            case "very_fast": return "Muy rápido";
+            case "fast": return "Rápido";
+            case "medium": return "Medio";
+            case "slow": return "Lento";
+            default: return speed;
+        }
+    };
+
+    const getQualityLabel = (quality: string) => {
+        switch (quality) {
+            case "good": return "Bueno";
+            case "excellent": return "Excelente";
+            case "best": return "El mejor";
+            default: return quality;
+        }
     };
 
     return (
@@ -118,66 +189,136 @@ export function StageConfigSelector({
                 )}
             </div>
 
-            {/* Model selector */}
-            <div className="relative">
-                <button
-                    onClick={() => setShowModelPicker(!showModelPicker)}
-                    className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-all flex items-center justify-between"
+            {/* Advanced toggle */}
+            <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="w-full text-sm text-zinc-500 hover:text-zinc-400 transition-colors flex items-center justify-center gap-2"
+            >
+                {showAdvanced ? "Ocultar opciones avanzadas" : "Mostrar opciones avanzadas"}
+                <svg
+                    className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                 >
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-lg">
-                            {selectedModel.provider === "OPENAI" ? "🤖" : "🔮"}
-                        </div>
-                        <div className="text-left">
-                            <div className="text-sm font-medium text-white">{selectedModel.name}</div>
-                            <div className="text-xs text-zinc-500">
-                                {selectedModel.speed} • {selectedModel.quality}
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+
+            {/* Model selector (advanced) */}
+            {showAdvanced && (
+                <div className="relative">
+                    {/* Legacy model warning */}
+                    {isLegacy && selectedModel && (
+                        <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                            <div className="flex items-start gap-3">
+                                <span className="text-red-400 text-lg">⚠️</span>
+                                <div className="flex-1">
+                                    <div className="text-sm font-medium text-red-400">Modelo no disponible</div>
+                                    <div className="text-xs text-red-400/70 mt-1">
+                                        {selectedModel.deprecatedMessage || "Este modelo ya no está disponible."}
+                                    </div>
+                                    <button
+                                        onClick={handleUseRecommended}
+                                        className="mt-2 text-xs font-medium text-blue-400 hover:text-blue-300"
+                                    >
+                                        Usar modelo recomendado →
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <svg
-                        className={`w-5 h-5 text-zinc-500 transition-transform ${showModelPicker ? "rotate-180" : ""
-                            }`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
+                    )}
 
-                {showModelPicker && (
-                    <div className="absolute z-10 w-full mt-2 py-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl">
-                        {MODELS.map((model) => (
-                            <button
-                                key={model.model}
-                                onClick={() => handleModelChange(model)}
-                                className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors ${selectedModel.model === model.model ? "bg-zinc-800" : ""
-                                    }`}
-                            >
-                                <div className="w-8 h-8 rounded-lg bg-zinc-700 flex items-center justify-center text-lg">
-                                    {model.provider === "OPENAI" ? "🤖" : "🔮"}
+                    <button
+                        onClick={() => setShowModelPicker(!showModelPicker)}
+                        disabled={loading}
+                        className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between ${isLegacy
+                                ? "bg-red-900/20 border-red-500/30"
+                                : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                            } ${loading ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                        {loading ? (
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse" />
+                                <div className="text-sm text-zinc-400">Cargando modelos...</div>
+                            </div>
+                        ) : selectedModel ? (
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-lg">
+                                    {getProviderIcon(selectedModel.provider)}
                                 </div>
-                                <div className="text-left flex-1">
-                                    <div className="text-sm font-medium text-white">{model.name}</div>
+                                <div className="text-left">
+                                    <div className={`text-sm font-medium ${isLegacy ? "text-red-400" : "text-white"}`}>
+                                        {selectedModel.label}
+                                        {selectedModel.recommendedForPreset?.includes(preset) && (
+                                            <span className="ml-2 text-xs text-emerald-400">Recomendado</span>
+                                        )}
+                                    </div>
                                     <div className="text-xs text-zinc-500">
-                                        {model.speed} • {model.quality}
+                                        {getSpeedLabel(selectedModel.speed)} • {getQualityLabel(selectedModel.quality)}
                                     </div>
                                 </div>
-                                {selectedModel.model === model.model && (
-                                    <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                                        <path
-                                            fillRule="evenodd"
-                                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                            clipRule="evenodd"
-                                        />
-                                    </svg>
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
+                            </div>
+                        ) : (
+                            <div className="text-sm text-zinc-400">Seleccionar modelo</div>
+                        )}
+                        <svg
+                            className={`w-5 h-5 text-zinc-500 transition-transform ${showModelPicker ? "rotate-180" : ""}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    {showModelPicker && !loading && (
+                        <div className="absolute z-10 w-full mt-2 py-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl max-h-80 overflow-auto">
+                            {Object.entries(modelsByProvider).map(([provider, providerModels]) => (
+                                <div key={provider}>
+                                    <div className="px-4 py-2 text-xs font-medium text-zinc-500 uppercase">
+                                        {getProviderIcon(provider as Provider)} {provider}
+                                    </div>
+                                    {providerModels.map((model) => (
+                                        <button
+                                            key={model.id}
+                                            onClick={() => handleModelChange(model)}
+                                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors ${selectedModelId === model.id ? "bg-zinc-800" : ""
+                                                }`}
+                                        >
+                                            <div className="w-8 h-8 rounded-lg bg-zinc-700 flex items-center justify-center text-lg">
+                                                {getProviderIcon(model.provider)}
+                                            </div>
+                                            <div className="text-left flex-1">
+                                                <div className="text-sm font-medium text-white flex items-center gap-2">
+                                                    {model.label}
+                                                    {model.recommendedForPreset?.includes(preset) && (
+                                                        <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                                                            Recomendado
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-zinc-500">
+                                                    {getSpeedLabel(model.speed)} • {getQualityLabel(model.quality)}
+                                                </div>
+                                            </div>
+                                            {selectedModelId === model.id && (
+                                                <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                        clipRule="evenodd"
+                                                    />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Estimated cost */}
             <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/50 border border-zinc-800">
@@ -190,4 +331,5 @@ export function StageConfigSelector({
     );
 }
 
-export { TokenBudgetBar, TokenEstimate };
+export { TokenBudgetBar } from "./TokenBudgetBar";
+export { TokenEstimate } from "./TokenBudgetBar";
