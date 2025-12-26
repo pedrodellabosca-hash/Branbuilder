@@ -10,8 +10,8 @@ import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-    params: { id: string; stageKey: string };
-    searchParams: { jobId?: string };
+    params: Promise<{ id: string; stageKey: string }>;
+    searchParams: Promise<{ jobId?: string }>;
 }
 
 async function getStageWithProject(
@@ -77,8 +77,8 @@ async function getJobStatus(jobId: string, dbOrgId: string) {
 
 export default async function StageDetailPage({ params, searchParams }: PageProps) {
     const { userId, orgId: clerkOrgId } = await auth();
-    const { id: projectId, stageKey } = params;
-    const { jobId: jobIdParam } = searchParams;
+    const { id: projectId, stageKey } = await params;
+    const { jobId: jobIdParam } = await searchParams;
 
     if (!userId) {
         redirect("/sign-in");
