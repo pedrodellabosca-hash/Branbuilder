@@ -4,9 +4,10 @@
  * Generate a test auth token for E2E testing in CI.
  * 
  * SECURITY CONTROLS:
- * 1. NEVER works if NODE_ENV === 'production' (hard fail)
- * 2. Requires E2E_TEST_SECRET env var to be set
- * 3. Requires x-e2e-secret header with matching secret
+ * 1. Returns 404 in production (endpoint doesn't exist)
+ * 2. Returns 404 if E2E_TEST_SECRET not configured (endpoint doesn't exist)
+ * 3. Uses timing-safe comparison for secret validation
+ * 4. Returns 401 only for incorrect secret (after checks pass)
  * 
  * USAGE (CI):
  *   curl -X POST http://localhost:3000/api/test/auth-token \
@@ -16,28 +17,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateE2EToken, isE2EAuthEnabled, validateE2ESecret, E2E_TEST_USER } from '@/lib/auth/e2e-token';
 
+// Standard 404 response - reveals nothing about the endpoint
+const NOT_FOUND = () => new NextResponse(null, { status: 404 });
+
 export async function POST(request: NextRequest) {
-    // HARD SECURITY CHECK - never allow in production
+    // HARD SECURITY CHECK #1: Production = 404 (endpoint doesn't exist)
     if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json(
-            { error: 'Not available in production' },
-            { status: 403 }
-        );
+        return NOT_FOUND();
     }
 
-    // Check if E2E auth is enabled
+    // HARD SECURITY CHECK #2: No secret configured = 404 (endpoint doesn't exist)
     if (!isE2EAuthEnabled()) {
-        return NextResponse.json(
-            { error: 'E2E auth not configured. Set E2E_TEST_SECRET env var.' },
-            { status: 503 }
-        );
+        return NOT_FOUND();
     }
 
-    // Validate secret header
+    // Now validate the provided secret
     const secret = request.headers.get('x-e2e-secret');
+
+    // Missing or invalid secret = 401 (only after confirming endpoint exists)
     if (!validateE2ESecret(secret)) {
         return NextResponse.json(
-            { error: 'Invalid or missing x-e2e-secret header' },
+            { error: 'Unauthorized' },
             { status: 401 }
         );
     }
@@ -57,20 +57,27 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('[E2E Auth] Error generating token:', error);
         return NextResponse.json(
-            { error: 'Failed to generate token' },
+            { error: 'Internal error' },
             { status: 500 }
         );
     }
 }
 
-// GET returns status info
+// GET also returns 404 in production/unconfigured
 export async function GET() {
+    // Production = 404
     if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json({ available: false, reason: 'production' });
+        return NOT_FOUND();
     }
 
+    // Not configured = 404
+    if (!isE2EAuthEnabled()) {
+        return NOT_FOUND();
+    }
+
+    // Only if properly configured, return status
     return NextResponse.json({
-        available: isE2EAuthEnabled(),
-        reason: isE2EAuthEnabled() ? 'configured' : 'E2E_TEST_SECRET not set',
+        available: true,
+        message: 'E2E auth endpoint ready',
     });
 }
