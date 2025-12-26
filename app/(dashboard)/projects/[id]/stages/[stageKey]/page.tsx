@@ -45,15 +45,13 @@ async function getStageWithProject(
                 orderBy: { createdAt: "desc" },
                 take: 5,
                 include: {
-                    include: {
-                        versions: {
-                            orderBy: { version: "desc" },
-                            take: 1,
-                            select: {
-                                version: true,
-                                status: true,
-                                generationParams: true, // Fetch metadata for fallback warning
-                            },
+                    versions: {
+                        orderBy: { version: "desc" },
+                        take: 1,
+                        select: {
+                            version: true,
+                            status: true,
+                            generationParams: true, // Fetch metadata for fallback warning
                         },
                     },
                 },
