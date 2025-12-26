@@ -182,11 +182,19 @@ model Organization {
   maxStoragePerProject BigInt            @default(1073741824) // 1GB in bytes
   maxProjects         Int                @default(5)
   
+  // Token Usage Tracking
+  monthlyTokenLimit   Int                @default(100000)  // base limit from plan
+  bonusTokens         Int                @default(0)       // purchased add-ons (500k increments)
+  monthlyTokensUsed   Int                @default(0)       // reset every 30 days
+  tokenResetDate      DateTime           @default(now())   // last reset timestamp
+  
   // Relations
   members             OrgMember[]
   projects            Project[]
   apiKeys             ApiKey[]
   auditLogs           AuditLog[]
+  usageRecords        Usage[]
+  jobs                Job[]
   
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -421,6 +429,7 @@ model LibraryFile {
 model Job {
   id          String    @id @default(cuid())
   orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   projectId   String?
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   
@@ -647,3 +656,62 @@ model UsageRecord {
   @@index([orgId, createdAt])
   @@index([orgId, type])
 }
+
+// =============================================================================
+// AI TOKEN USAGE TRACKING
+// =============================================================================
+
+model Usage {
+  id              String   @id @default(cuid())
+  orgId           String
+  org             Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  // Context
+  projectId       String?
+  stageKey        String?
+  jobId           String?
+  
+  // AI Details
+  provider        String   // OPENAI, ANTHROPIC, MOCK
+  model           String   // gpt-4o-mini, gpt-4o, etc
+  
+  // Token counts
+  inputTokens     Int
+  outputTokens    Int
+  totalTokens     Int
+  
+  // Cost tracking (for internal analytics, set by admin pricing)
+  estimatedCostUsd Float?
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([orgId, createdAt])
+  @@index([orgId, stageKey])
+}
+
+// =============================================================================
+// ADMIN CONFIGURATION (Pricing & Plans)
+// =============================================================================
+
+model PlanConfig {
+  id              String   @id @default(cuid())
+  plan            Plan     @unique
+  
+  // Token limits
+  baseTokenLimit  Int      // Monthly base tokens included with plan
+  
+  // Pricing (in cents USD)
+  priceMonthlyUsd Int      // e.g., 2900 = $29.00/month
+  priceYearlyUsd  Int      // e.g., 29000 = $290.00/year
+  
+  // Add-on pricing
+  tokenAddOnSize  Int      @default(500000)  // Tokens per add-on purchase
+  tokenAddOnPriceUsd Int   @default(1000)    // Price per add-on (cents)
+  
+  // Features
+  canPurchaseTokens Boolean @default(false)  // BASIC=false, MID/PRO=true
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+

@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { getAIProvider } from "@/lib/ai";
 import { getStagePrompt } from "@/lib/prompts";
 import { validateStageOutput, isValidStageKey } from "./schemas";
+import { checkTokenBudget, recordUsage, estimateTokensForStage } from "@/lib/usage";
 
 // =============================================================================
 // TYPES
@@ -35,6 +36,11 @@ export interface RunStageResult {
     outputId?: string;
     stageId?: string;
     error?: string;
+    // Token info
+    estimatedTokens?: number;
+    remainingTokens?: number;
+    tokenLimitReached?: boolean;
+    suggestUpgrade?: boolean;
 }
 
 // Stage definitions for auto-creation
@@ -150,6 +156,25 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
                 stageId: stage.id,
             };
         }
+    }
+
+    // Check token budget before proceeding
+    const estimatedTokens = estimateTokensForStage(stageKey);
+    const budget = await checkTokenBudget(org.id, estimatedTokens);
+
+    if (!budget.allowed) {
+        return {
+            success: false,
+            jobId: "",
+            status: "FAILED",
+            error: budget.suggestUpgrade
+                ? "Monthly token limit reached. Upgrade to MID or PRO plan for more tokens."
+                : "Monthly token limit reached. Purchase additional tokens to continue.",
+            stageId: stage.id,
+            tokenLimitReached: true,
+            suggestUpgrade: budget.suggestUpgrade,
+            remainingTokens: budget.remaining,
+        };
     }
 
     // Find or create output
@@ -279,6 +304,25 @@ async function processStageJob(
 
         const latencyMs = Date.now() - startTime;
         console.log(`[runStage] AI response received (${latencyMs}ms, ${aiResponse.usage?.totalTokens || 0} tokens)`);
+
+        // Record actual token usage
+        const job = await prisma.job.findUnique({
+            where: { id: jobId },
+            select: { orgId: true, projectId: true },
+        });
+
+        if (job?.orgId && aiResponse.usage) {
+            await recordUsage({
+                orgId: job.orgId,
+                projectId: job.projectId || undefined,
+                stageKey,
+                jobId,
+                provider: provider.type,
+                model: aiResponse.model,
+                inputTokens: aiResponse.usage.promptTokens || 0,
+                outputTokens: aiResponse.usage.completionTokens || 0,
+            });
+        }
 
         // Parse raw output
         const parsedRaw = prompt.parseOutput(aiResponse.content);
