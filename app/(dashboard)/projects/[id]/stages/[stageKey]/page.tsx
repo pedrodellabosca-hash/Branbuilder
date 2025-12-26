@@ -9,6 +9,9 @@ import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
 
+// Security: This page strictly handles GET requests (rendering).
+// All mutations (POST/PUT/DELETE) must be directed to /api/... routes.
+
 interface PageProps {
     params: Promise<{ id: string; stageKey: string }>;
     searchParams: Promise<{ jobId?: string }>;
