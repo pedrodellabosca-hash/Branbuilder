@@ -14,7 +14,10 @@ import { prisma } from "@/lib/db";
 import { getAIProvider } from "@/lib/ai";
 import { getStagePrompt } from "@/lib/prompts";
 import { validateStageOutput, isValidStageKey } from "./schemas";
-import { checkTokenBudget, recordUsage, estimateTokensForStage } from "@/lib/usage";
+import { checkTokenBudget, recordUsage } from "@/lib/usage";
+import { resolveEffectiveConfig, serializeConfig } from "@/lib/ai/resolve-config";
+import type { PresetLevel } from "@/lib/ai/presets";
+import type { EffectiveConfig } from "@/lib/ai/config";
 
 // =============================================================================
 // TYPES
@@ -26,6 +29,11 @@ export interface RunStageParams {
     regenerate?: boolean;
     userId: string;
     orgId: string; // Clerk orgId
+    // AI Configuration
+    preset?: PresetLevel;
+    provider?: string;
+    model?: string;
+    temperature?: number;
 }
 
 export interface RunStageResult {
@@ -41,6 +49,9 @@ export interface RunStageResult {
     remainingTokens?: number;
     tokenLimitReached?: boolean;
     suggestUpgrade?: boolean;
+    // Config used
+    preset?: PresetLevel;
+    model?: string;
 }
 
 // Stage definitions for auto-creation
@@ -158,9 +169,17 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
         }
     }
 
+    // Resolve effective configuration
+    const effectiveConfig = resolveEffectiveConfig({
+        stageKey,
+        preset: params.preset,
+        provider: params.provider,
+        model: params.model,
+        temperature: params.temperature,
+    });
+
     // Check token budget before proceeding
-    const estimatedTokens = estimateTokensForStage(stageKey);
-    const budget = await checkTokenBudget(org.id, estimatedTokens);
+    const budget = await checkTokenBudget(org.id, effectiveConfig.estimatedTokens);
 
     if (!budget.allowed) {
         return {
@@ -213,6 +232,8 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
                 stageKey,
                 projectName: project.name,
                 userId,
+                // Effective AI configuration
+                ...serializeConfig(effectiveConfig),
             },
         },
     });
@@ -220,7 +241,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
     // Process job inline (dev mode) or return for async processing
     // For now, process inline
     try {
-        await processStageJob(job.id, stage.id, output.id, stageKey, project.name, isRegenerate, userId);
+        await processStageJob(job.id, stage.id, output.id, stageKey, project.name, isRegenerate, userId, effectiveConfig);
 
         // Fetch updated job status
         const updatedJob = await prisma.job.findUnique({
@@ -234,6 +255,10 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
             outputId: output.id,
             stageId: stage.id,
             error: updatedJob?.error || undefined,
+            estimatedTokens: effectiveConfig.estimatedTokens,
+            remainingTokens: budget.remaining - effectiveConfig.estimatedTokens,
+            preset: effectiveConfig.preset,
+            model: effectiveConfig.model,
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -258,7 +283,8 @@ async function processStageJob(
     stageKey: string,
     projectName: string,
     isRegenerate: boolean,
-    userId: string
+    userId: string,
+    effectiveConfig: EffectiveConfig
 ): Promise<void> {
     const startTime = Date.now();
 
@@ -284,13 +310,16 @@ async function processStageJob(
         // Get prompt from registry
         const prompt = getStagePrompt(stageKey);
         console.log(`[runStage] Using prompt: ${prompt.id} v${prompt.version}`);
+        console.log(`[runStage] Config: preset=${effectiveConfig.preset} provider=${effectiveConfig.provider} model=${effectiveConfig.model}`);
 
-        // Build messages with context
+        // Build messages with context and preset config
         const messages = prompt.buildMessages({
             stageName: stage.name,
             stageKey,
             isRegenerate,
             projectName,
+            // Note: presetConfig is stored in job payload for reference
+            // Prompts can be extended to use it in the future
         });
 
         // Get AI provider and generate content
@@ -299,7 +328,8 @@ async function processStageJob(
 
         const aiResponse = await provider.complete({
             messages,
-            temperature: 0.7,
+            temperature: effectiveConfig.temperature || 0.7,
+            maxTokens: effectiveConfig.resolvedMaxTokens,
         });
 
         const latencyMs = Date.now() - startTime;
