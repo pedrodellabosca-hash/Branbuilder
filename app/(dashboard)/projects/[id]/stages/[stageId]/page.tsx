@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Palette, LineChart, Play, CheckCircle, Circle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { StageActions } from "@/components/project/StageActions";
+import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -144,6 +145,11 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                     <ArrowLeft className="w-4 h-4" />
                     Volver al proyecto
                 </Link>
+
+                {/* AI Config Selector */}
+                <div className="w-full max-w-sm">
+                    <StageConfigSelector projectId={projectId} stageId={stageId} />
+                </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div>
