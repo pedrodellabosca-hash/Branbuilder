@@ -10,8 +10,8 @@ import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-    params: Promise<{ id: string; stageKey: string }>;
-    searchParams: Promise<{ jobId?: string }>;
+    params: { id: string; stageKey: string };
+    searchParams: { jobId?: string };
 }
 
 async function getStageWithProject(
@@ -92,8 +92,8 @@ async function getJobStatus(jobId: string, orgId: string) {
 
 export default async function StageDetailPage({ params, searchParams }: PageProps) {
     const { userId, orgId } = await auth();
-    const { id: projectId, stageKey } = await params;
-    const { jobId: jobIdParam } = await searchParams;
+    const { id: projectId, stageKey } = params;
+    const { jobId: jobIdParam } = searchParams;
 
     if (!userId) {
         redirect("/sign-in");
@@ -112,7 +112,11 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     // Canonical URL check: Redirect if current param isn't the true stageKey
     // This ensures API calls in sub-components always use the valid stageKey
     if (stageKey !== stage.stageKey) {
-        redirect(`/projects/${projectId}/stages/${stage.stageKey}`);
+        let redirectUrl = `/projects/${projectId}/stages/${stage.stageKey}`;
+        if (jobIdParam) {
+            redirectUrl += `?jobId=${jobIdParam}`;
+        }
+        redirect(redirectUrl);
     }
 
 
