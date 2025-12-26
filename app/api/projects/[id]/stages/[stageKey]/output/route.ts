@@ -67,6 +67,11 @@ export async function GET(
             });
         }
 
+        // Check for specific version request
+        const { searchParams } = new URL(request.url);
+        const versionParam = searchParams.get("version");
+        const specificVersion = versionParam ? parseInt(versionParam) : null;
+
         // Find output with versions
         const output = await prisma.output.findFirst({
             where: {
@@ -74,12 +79,37 @@ export async function GET(
                 stageId: stage.id,
             },
             include: {
+                // Always get recent history for the list
                 versions: {
                     orderBy: { version: "desc" },
-                    take: 5,
+                    take: 10, // Increased to 10 to see more history
                 },
             },
         });
+
+        // Determine which version to show as "current"
+        let currentVersion = output?.versions[0] || null;
+
+        // If specific version requested, try to find it in the fetched list or fetch it separately
+        if (specificVersion && output) {
+            const found = output.versions.find(v => v.version === specificVersion);
+            if (found) {
+                currentVersion = found;
+            } else {
+                // Not in recent list, fetch specifically
+                const specificV = await prisma.outputVersion.findUnique({
+                    where: {
+                        outputId_version: {
+                            outputId: output.id,
+                            version: specificVersion,
+                        }
+                    }
+                });
+                if (specificV) {
+                    currentVersion = specificV;
+                }
+            }
+        }
 
         return NextResponse.json({
             stage: {
@@ -105,7 +135,17 @@ export async function GET(
                 type: v.type,
                 createdAt: v.createdAt,
             })) || [],
-            latestVersion: output?.versions[0] || null,
+            latestVersion: output?.versions[0] || null, // Always the absolute latest
+            currentVersion: currentVersion ? { // The one to display
+                id: currentVersion.id,
+                version: currentVersion.version,
+                content: currentVersion.content,
+                provider: currentVersion.provider,
+                model: currentVersion.model,
+                status: currentVersion.status,
+                type: currentVersion.type,
+                createdAt: currentVersion.createdAt,
+            } : null,
         });
     } catch (error) {
         console.error("[Stage Output] Error:", error);

@@ -32,6 +32,7 @@ interface OutputData {
     output: { id: string; name: string; outputKey: string } | null;
     versions: OutputVersion[];
     latestVersion: OutputVersion | null;
+    currentVersion?: OutputVersion | null;
 }
 
 export function StageActions({
@@ -66,8 +67,11 @@ export function StageActions({
     const abortControllerRef = useRef<AbortController | null>(null);
     const isMountedRef = useRef(true);
 
+    // State for version navigation
+    const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+
     // Fetch output data from /output endpoint with abort support
-    const fetchOutput = useCallback(async () => {
+    const fetchOutput = useCallback(async (version?: number) => {
         if (!projectId || !stageKey) return;
 
         // Cancel previous request
@@ -78,7 +82,11 @@ export function StageActions({
 
         setIsLoadingOutput(true);
         try {
-            const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/output`, {
+            const url = version
+                ? `/api/projects/${projectId}/stages/${stageKey}/output?version=${version}`
+                : `/api/projects/${projectId}/stages/${stageKey}/output`;
+
+            const response = await fetch(url, {
                 signal: abortControllerRef.current.signal,
             });
 
@@ -94,6 +102,12 @@ export function StageActions({
             const data: OutputData = await response.json();
             if (isMountedRef.current) {
                 setOutputData(data);
+                // Sync selected version state with what was returned (if we asked for a specific one)
+                if (version) {
+                    setSelectedVersion(version);
+                } else {
+                    setSelectedVersion(null); // Reset to latest
+                }
             }
         } catch (err) {
             // Ignore abort errors
@@ -106,6 +120,15 @@ export function StageActions({
             }
         }
     }, [projectId, stageKey]);
+
+    const handleVersionClick = (version: number) => {
+        if (version === selectedVersion) return; // Already selected
+        fetchOutput(version);
+    };
+
+    const handleBackToLatest = () => {
+        fetchOutput(); // No args = latest
+    };
 
     // Fetch output on mount and when status changes
     useEffect(() => {
@@ -130,6 +153,7 @@ export function StageActions({
     const inCooldown = cooldownUntil > 0;
 
     const enqueueJob = async () => {
+        // ... (existing enqueueJob logic) ...
         // Guard: prevent double-click and cooldown
         if (isLoading || inCooldown) return;
 
@@ -290,7 +314,7 @@ export function StageActions({
             },
         };
 
-        const config = statusConfig[jobStatus];
+        const config = statusConfig[jobStatus] || statusConfig.FAILED;
         const Icon = config.icon;
 
         return (
@@ -318,6 +342,10 @@ export function StageActions({
         }
         return String(content || "");
     };
+
+    // Use currentVersion if available (from API), otherwise default to null (will prevent crash)
+    // Actually, API now returns currentVersion. if null, we fallback to nothing.
+    const displayedVersion = outputData?.currentVersion || outputData?.latestVersion;
 
     return (
         <div className="space-y-6">
@@ -395,7 +423,7 @@ export function StageActions({
                 </div>
             )}
 
-            {outputData?.latestVersion && (
+            {displayedVersion && (
                 <div className="space-y-4">
                     {/* Latest Version Content */}
                     <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
@@ -403,49 +431,71 @@ export function StageActions({
                             <div className="flex items-center gap-2">
                                 <Sparkles className="w-4 h-4 text-purple-400" />
                                 <span className="text-sm font-medium text-white">
-                                    Versión {outputData.latestVersion.version}
+                                    Versión {displayedVersion.version}
                                 </span>
-                            </div>
-                            <div className="flex items-center gap-3 text-xs text-slate-400">
-                                {outputData.latestVersion.provider && (
-                                    <span className="bg-slate-700 px-2 py-0.5 rounded">
-                                        {outputData.latestVersion.provider}/{outputData.latestVersion.model || "default"}
+                                {selectedVersion && (
+                                    <span className="px-2 py-0.5 bg-yellow-500/10 text-yellow-400 text-xs rounded border border-yellow-500/20">
+                                        Histórico
                                     </span>
                                 )}
-                                <span>{formatDate(outputData.latestVersion.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-400">
+                                {selectedVersion && (
+                                    <button
+                                        onClick={handleBackToLatest}
+                                        className="text-blue-400 hover:text-blue-300 hover:underline mr-2"
+                                    >
+                                        Volver a la última versión
+                                    </button>
+                                )}
+                                {displayedVersion.provider && (
+                                    <span className="bg-slate-700 px-2 py-0.5 rounded">
+                                        {displayedVersion.provider}/{displayedVersion.model || "default"}
+                                    </span>
+                                )}
+                                <span>{formatDate(displayedVersion.createdAt)}</span>
                             </div>
                         </div>
                         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
                             <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
-                                {renderContent(outputData.latestVersion.content)}
+                                {renderContent(displayedVersion.content)}
                             </pre>
                         </div>
                     </div>
 
                     {/* Version History */}
-                    {outputData.versions.length > 1 && (
+                    {outputData && outputData.versions.length > 0 && (
                         <div className="border-t border-slate-800 pt-4">
                             <h4 className="text-sm font-medium text-slate-400 mb-3 flex items-center gap-2">
                                 <Clock className="w-4 h-4" />
-                                Historial de versiones ({outputData.versions.length})
+                                Historial de versiones
                             </h4>
                             <div className="space-y-2">
-                                {outputData.versions.slice(1).map((v) => (
-                                    <div
-                                        key={v.id}
-                                        className="flex items-center justify-between p-3 bg-slate-800/30 rounded-lg text-sm"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-white font-medium">v{v.version}</span>
-                                            <span className="text-slate-400 text-xs">
-                                                {v.provider || "manual"}/{v.model || "-"}
+                                {outputData.versions.map((v) => {
+                                    const isCurrent = displayedVersion?.id === v.id;
+                                    return (
+                                        <button
+                                            key={v.id}
+                                            onClick={() => handleVersionClick(v.version)}
+                                            className={`w-full flex items-center justify-between p-3 rounded-lg text-sm transition-colors text-left ${isCurrent
+                                                ? "bg-slate-700/50 border border-slate-600"
+                                                : "bg-slate-800/30 hover:bg-slate-800 border border-transparent"
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className={`font-medium ${isCurrent ? "text-white" : "text-slate-300"}`}>
+                                                    v{v.version}
+                                                </span>
+                                                <span className="text-slate-400 text-xs">
+                                                    {v.provider || "manual"}/{v.model || "-"}
+                                                </span>
+                                            </div>
+                                            <span className="text-slate-500 text-xs">
+                                                {formatDate(v.createdAt)}
                                             </span>
-                                        </div>
-                                        <span className="text-slate-500 text-xs">
-                                            {formatDate(v.createdAt)}
-                                        </span>
-                                    </div>
-                                ))}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
