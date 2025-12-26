@@ -200,22 +200,73 @@ Los documentos de especificación se encuentran en `/docs`:
 
 ## 🚢 Deploy
 
-### Vercel (Frontend + API)
+### Single-Service (Docker - Recomendado)
+
+Deploy Next.js + Worker en un solo contenedor usando PM2.
+
+#### 1. Build de la imagen
+
+```bash
+docker build -t brandforge .
+```
+
+#### 2. Variables de entorno requeridas
+
+| Variable | Requerida | Descripción |
+|----------|-----------|-------------|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk publishable key |
+| `CLERK_SECRET_KEY` | ✅ | Clerk secret key |
+| `AI_PROVIDER` | ❌ | `MOCK` (default) o `OPENAI` |
+| `OPENAI_API_KEY` | ❌ | Requerido si AI_PROVIDER=OPENAI |
+
+#### 3. Run con Docker
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -e DATABASE_URL="postgresql://..." \
+  -e NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_..." \
+  -e CLERK_SECRET_KEY="sk_..." \
+  -e AI_PROVIDER="MOCK" \
+  brandforge
+```
+
+#### 4. Deploy en Railway/Render
+
+1. Conectar repo a Railway/Render
+2. Agregar servicio PostgreSQL
+3. Configurar env vars (ver arriba)
+4. Railway detecta Dockerfile automáticamente
+
+**Railway específico:**
+```bash
+# railway.toml (opcional)
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/api/ai/ping"
+restartPolicyType = "on_failure"
+```
+
+### Vercel (Frontend + API sin Worker)
+
 ```bash
 vercel
 ```
 
-### Base de datos: Neon Postgres
-- Crear proyecto en [neon.tech](https://neon.tech)
+> ⚠️ En Vercel el Worker debe deployarse por separado (Render Background Worker).
+
+### Base de datos: Neon/Railway Postgres
+
+- Crear proyecto en [neon.tech](https://neon.tech) o Railway
 - Copiar connection string a `DATABASE_URL`
 
-### Storage: Cloudflare R2
+### Storage: Cloudflare R2 (opcional)
+
 - Crear bucket en Cloudflare
 - Configurar variables R2_*
-
-### Worker: Render
-- Crear Background Worker en [render.com](https://render.com)
-- Comando: `npm run worker:start`
 
 ---
 
