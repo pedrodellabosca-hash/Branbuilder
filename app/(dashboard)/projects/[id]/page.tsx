@@ -203,7 +203,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                             />
                                             <div>
                                                 <p className="text-sm font-medium text-white group-hover:text-blue-400 transition-colors">
-                                                    {stage.stageKey}. {stage.name}
+                                                    {stage.displayKey || stage.stageKey}. {stage.name}
                                                 </p>
                                             </div>
                                         </div>
@@ -256,7 +256,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                             />
                                             <div>
                                                 <p className="text-sm font-medium text-white group-hover:text-purple-400 transition-colors">
-                                                    {stage.stageKey}. {stage.name}
+                                                    {stage.displayKey || stage.stageKey}. {stage.name}
                                                 </p>
                                             </div>
                                         </div>

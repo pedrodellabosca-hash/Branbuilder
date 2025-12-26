@@ -308,7 +308,8 @@ model Stage {
   projectId   String
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   module      Module
-  stageKey    String      // A1, A2, A3... or B1, B2, B3...
+  stageKey    String      // Technical ID: naming, manifesto, etc.
+  displayKey  String?     // Human ID: A1, A2, B1, etc.
   name        String
   description String?
   order       Int
@@ -437,6 +438,7 @@ model Job {
   stage       String?
   type        JobType
   payload     Json
+  runConfig   Json?     // Persisted effective configuration (Source of Truth)
   
   status      JobStatus @default(QUEUED)
   progress    Int       @default(0)

@@ -70,6 +70,9 @@ const PURCHASABLE_PLANS: Plan[] = ["MID", "PRO"];
 /**
  * Check if organization has budget for estimated tokens
  */
+/**
+ * Check if organization has budget for estimated tokens
+ */
 export async function checkTokenBudget(
     orgId: string,
     estimatedTokens: number
@@ -108,9 +111,12 @@ export async function checkTokenBudget(
         throw new Error("Organization not found");
     }
 
-    const totalLimit = freshOrg.monthlyTokenLimit + freshOrg.bonusTokens;
-    const remaining = totalLimit - freshOrg.monthlyTokensUsed;
-    const allowed = remaining >= estimatedTokens;
+    // Logic: Monthly quota first, then bonus tokens
+    const monthlyRemaining = Math.max(0, freshOrg.monthlyTokenLimit - freshOrg.monthlyTokensUsed);
+    const totalRemaining = monthlyRemaining + freshOrg.bonusTokens;
+
+    // Check if allowed
+    const allowed = totalRemaining >= estimatedTokens;
     const canPurchaseMore = PURCHASABLE_PLANS.includes(freshOrg.plan);
     const suggestUpgrade = !allowed && freshOrg.plan === "BASIC";
 
@@ -123,9 +129,9 @@ export async function checkTokenBudget(
 
     return {
         allowed,
-        remaining: Math.max(0, remaining),
-        limit: totalLimit,
-        used: freshOrg.monthlyTokensUsed,
+        remaining: totalRemaining,
+        limit: freshOrg.monthlyTokenLimit + freshOrg.bonusTokens, // Total capacity
+        used: freshOrg.monthlyTokensUsed, // Only tracks monthly quota usage
         bonusTokens: freshOrg.bonusTokens,
         canPurchaseMore,
         suggestUpgrade,
@@ -136,40 +142,69 @@ export async function checkTokenBudget(
 
 /**
  * Record actual token usage after AI call
+ * Implements priority: Monthly Quota -> Bonus Tokens
+ * Uses transaction to prevent race conditions
  */
 export async function recordUsage(params: RecordUsageParams): Promise<void> {
     const { orgId, projectId, stageKey, jobId, provider, model, inputTokens, outputTokens } = params;
     const totalTokens = inputTokens + outputTokens;
 
-    // Create usage record
-    await prisma.usage.create({
-        data: {
-            orgId,
-            projectId,
-            stageKey,
-            jobId,
-            provider,
-            model,
-            inputTokens,
-            outputTokens,
-            totalTokens,
-            // Cost estimation can be added later based on admin pricing
-        },
-    });
-
-    // Increment monthly usage counter
-    await prisma.organization.update({
-        where: { id: orgId },
-        data: {
-            monthlyTokensUsed: {
-                increment: totalTokens,
+    await prisma.$transaction(async (tx) => {
+        // 1. Lock/Get Organization current state
+        const org = await tx.organization.findUnique({
+            where: { id: orgId },
+            select: {
+                monthlyTokenLimit: true,
+                monthlyTokensUsed: true,
+                bonusTokens: true,
             },
-        },
-    });
+        });
 
-    console.log(
-        `[Usage] Recorded ${totalTokens} tokens for org ${orgId} (${provider}/${model})`
-    );
+        if (!org) {
+            throw new Error(`Org ${orgId} not found while recording usage`);
+        }
+
+        // 2. Calculate consumption split
+        const monthlyAvailable = Math.max(0, org.monthlyTokenLimit - org.monthlyTokensUsed);
+
+        // Consume from monthly quota first
+        const monthlyConsumption = Math.min(totalTokens, monthlyAvailable);
+
+        // Consume remainder from bonus
+        const bonusConsumption = Math.max(0, totalTokens - monthlyConsumption);
+
+        // 3. Atomic update
+        await tx.organization.update({
+            where: { id: orgId },
+            data: {
+                monthlyTokensUsed: {
+                    increment: monthlyConsumption,
+                },
+                bonusTokens: {
+                    decrement: bonusConsumption,
+                },
+            },
+        });
+
+        // 4. Create usage record
+        await tx.usage.create({
+            data: {
+                orgId,
+                projectId,
+                stageKey,
+                jobId,
+                provider,
+                model,
+                inputTokens,
+                outputTokens,
+                totalTokens,
+            },
+        });
+
+        console.log(
+            `[Usage] Recorded ${totalTokens} tokens for org ${orgId} (Monthly: ${monthlyConsumption}, Bonus: ${bonusConsumption})`
+        );
+    });
 }
 
 /**
@@ -194,9 +229,14 @@ export async function getUsageSummary(orgId: string): Promise<UsageSummary> {
         throw new Error("Organization not found");
     }
 
-    const totalLimit = org.monthlyTokenLimit + org.bonusTokens;
-    const remaining = Math.max(0, totalLimit - org.monthlyTokensUsed);
-    const percentUsed = totalLimit > 0 ? (org.monthlyTokensUsed / totalLimit) * 100 : 0;
+    const monthlyRemaining = Math.max(0, org.monthlyTokenLimit - org.monthlyTokensUsed);
+    const totalAvailable = monthlyRemaining + org.bonusTokens;
+    const totalLimit = org.monthlyTokenLimit + org.bonusTokens; // Not strictly a "limit" as bonus varies, but helpful for UI bars
+
+    // Percent used: (Total Limit - Total Available) / Total Limit
+    // Or just based on monthly? Let's do Monthly Usage % for the main bar usually
+    // But user requested "Este ciclo: X, Extra: Y, Total: Z"
+    // We send raw data and let UI handle display
 
     const resetDate = new Date(org.tokenResetDate);
     resetDate.setDate(resetDate.getDate() + 30);
@@ -206,11 +246,11 @@ export async function getUsageSummary(orgId: string): Promise<UsageSummary> {
     );
 
     return {
-        limit: totalLimit,
-        used: org.monthlyTokensUsed,
-        remaining,
+        limit: org.monthlyTokenLimit, // Base monthly limit
+        used: org.monthlyTokensUsed,  // Monthly used
+        remaining: totalAvailable,    // Total available (Monthly + Bonus)
         bonusTokens: org.bonusTokens,
-        percentUsed: Math.min(100, percentUsed),
+        percentUsed: org.monthlyTokenLimit > 0 ? (org.monthlyTokensUsed / org.monthlyTokenLimit) * 100 : 0,
         resetDate,
         daysUntilReset,
         plan: org.plan,
@@ -226,23 +266,35 @@ export async function resetMonthlyUsageIfNeeded(orgId: string): Promise<boolean>
         where: { id: orgId },
         select: {
             tokenResetDate: true,
-            monthlyTokensUsed: true,
         },
     });
 
     if (!org) return false;
 
-    const daysSinceReset = Math.floor(
-        (Date.now() - org.tokenResetDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
+    const resetDate = new Date(org.tokenResetDate);
+    const now = new Date();
 
-    if (daysSinceReset >= 30) {
+    // Calculate difference in milliseconds
+    const diffTime = Math.abs(now.getTime() - resetDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // Check if 30 days passed since last reset date
+    // Note: We compare against resetDate directly
+    if (now >= resetDate && diffDays >= 30) {
+        // Calculate new reset date: old reset date + 30 days
+        // This keeps the cycle consistent even if the job runs late
+        const newResetDate = new Date(resetDate);
+        newResetDate.setDate(newResetDate.getDate() + 30);
+
+        // If new reset date is still in the past (e.g. inactive for months), set to now
+        const effectiveResetDate = newResetDate > now ? newResetDate : now;
+
         await prisma.organization.update({
             where: { id: orgId },
             data: {
                 monthlyTokensUsed: 0,
-                tokenResetDate: new Date(),
-                // Keep bonusTokens - they don't reset
+                tokenResetDate: effectiveResetDate,
+                // Bonus tokens are NOT reset, they carry over
             },
         });
         console.log(`[Usage] Reset monthly usage for org ${orgId}`);

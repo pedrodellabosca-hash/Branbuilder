@@ -87,44 +87,50 @@ export function TokenBudgetBar({ compact = false, className = "" }: TokenBudgetP
         <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${className}`}>
             <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-medium text-zinc-300">Token Usage</h3>
-                <span className="text-xs text-zinc-500 uppercase">{plan}</span>
+                <span className="text-xs text-zinc-500 uppercase px-2 py-0.5 rounded bg-zinc-800">{plan} PLAN</span>
             </div>
 
             {/* Progress bar */}
-            <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden mb-3">
+            <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden mb-3 relative">
                 <div
                     className={`h-full ${progressColor} transition-all duration-500`}
                     style={{ width: `${Math.min(100, tokens.percentUsed)}%` }}
                 />
             </div>
 
-            {/* Stats */}
-            <div className="flex justify-between text-sm">
-                <div>
-                    <span className="text-zinc-400">Used: </span>
-                    <span className="text-white font-medium">{formatNumber(tokens.used)}</span>
-                    <span className="text-zinc-500"> / {formatNumber(tokens.limit)}</span>
+            {/* Stats Breakdown */}
+            <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+                <div className="p-2 rounded bg-zinc-800/50 border border-zinc-800/50">
+                    <div className="text-zinc-500 mb-0.5">Este ciclo</div>
+                    <div className="font-medium text-zinc-300">
+                        {formatNumber(tokens.used)} <span className="text-zinc-600">/ {formatNumber(tokens.limit)}</span>
+                    </div>
                 </div>
-                <div>
-                    <span className="text-zinc-400">Remaining: </span>
-                    <span className={`font-medium ${tokens.percentUsed >= 90 ? "text-red-400" : "text-emerald-400"
-                        }`}>
+                <div className="p-2 rounded bg-zinc-800/50 border border-zinc-800/50">
+                    <div className="text-zinc-500 mb-0.5">Extra (Bonus)</div>
+                    <div className="font-medium text-emerald-400">
+                        +{formatNumber(tokens.bonus)}
+                    </div>
+                </div>
+                <div className="p-2 rounded bg-zinc-800/50 border border-zinc-800/50">
+                    <div className="text-zinc-500 mb-0.5">Total Disp.</div>
+                    <div className="font-medium text-white">
                         {formatNumber(tokens.remaining)}
-                    </span>
+                    </div>
                 </div>
             </div>
 
             {/* Reset info */}
-            <div className="mt-3 pt-3 border-t border-zinc-800 flex justify-between items-center text-xs text-zinc-500">
+            <div className="pt-2 border-t border-zinc-800 flex justify-between items-center text-xs text-zinc-500">
                 <span>Resets in {reset.daysRemaining} days</span>
-                {canPurchaseMore && tokens.percentUsed >= 70 && (
-                    <button className="text-blue-400 hover:text-blue-300 transition-colors">
-                        + Buy more tokens
+                {canPurchaseMore && (
+                    <button className="text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
+                        + Add Tokens
                     </button>
                 )}
-                {!canPurchaseMore && tokens.percentUsed >= 90 && (
-                    <button className="text-blue-400 hover:text-blue-300 transition-colors">
-                        Upgrade plan
+                {!canPurchaseMore && tokens.percentUsed >= 80 && (
+                    <button className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
+                        Upgrade Plan
                     </button>
                 )}
             </div>

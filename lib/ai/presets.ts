@@ -17,14 +17,20 @@ export type PresetLevel = typeof PRESET_LEVELS[number];
 // NAMING PRESETS
 // =============================================================================
 
+// =============================================================================
+// NAMING PRESETS
+// =============================================================================
+
 export interface NamingPresetConfig {
-    numVariants: number;           // How many name options to generate
-    includeTaglines: boolean;      // Include tagline suggestions
-    includeRationale: boolean;     // Include reasoning for each name
-    includeLinguisticCheck: boolean; // Check pronunciation, meaning in other languages
-    outputSections: string[];      // Which sections to include
-    maxOutputTokens: number;       // Token limit for this preset
-    estimatedTokens: number;       // Estimated total tokens
+    numVariants: number;
+    includeTaglines: boolean;
+    includeRationale: boolean;
+    includeLinguisticCheck: boolean;
+    outputSections: string[];
+    maxOutputTokens: number;
+    estimatedTokensMin: number;
+    estimatedTokensMax: number;
+    estimatedTokens: number; // Avg for calculation
 }
 
 export const NAMING_PRESETS: Record<PresetLevel, NamingPresetConfig> = {
@@ -34,26 +40,32 @@ export const NAMING_PRESETS: Record<PresetLevel, NamingPresetConfig> = {
         includeRationale: false,
         includeLinguisticCheck: false,
         outputSections: ["names"],
-        maxOutputTokens: 500,
-        estimatedTokens: 800,
+        maxOutputTokens: 800, // Strict limit for fast
+        estimatedTokensMin: 400,
+        estimatedTokensMax: 700,
+        estimatedTokens: 550,
     },
     balanced: {
         numVariants: 5,
         includeTaglines: true,
         includeRationale: true,
         includeLinguisticCheck: false,
-        outputSections: ["names", "taglines", "rationale"],
-        maxOutputTokens: 1200,
-        estimatedTokens: 1500,
+        outputSections: ["names", "rationale", "taglines"],
+        maxOutputTokens: 1500, // Enough for 5 variants + rationale
+        estimatedTokensMin: 900,
+        estimatedTokensMax: 1400,
+        estimatedTokens: 1150,
     },
     quality: {
-        numVariants: 8,
+        numVariants: 10,
         includeTaglines: true,
         includeRationale: true,
-        includeLinguisticCheck: true,
-        outputSections: ["names", "taglines", "rationale", "linguistic_analysis", "domain_availability"],
-        maxOutputTokens: 2500,
-        estimatedTokens: 3000,
+        includeLinguisticCheck: true, // Requires more tokens or subtasks
+        outputSections: ["names", "rationale", "taglines", "linguistics"],
+        maxOutputTokens: 3000,
+        estimatedTokensMin: 2000,
+        estimatedTokensMax: 2900,
+        estimatedTokens: 2450,
     },
 };
 
@@ -63,49 +75,57 @@ export const NAMING_PRESETS: Record<PresetLevel, NamingPresetConfig> = {
 
 export interface VoicePresetConfig {
     depth: "basic" | "standard" | "comprehensive";
-    channelExamples: number;       // Examples per communication channel
+    channelExamples: number;
     includePersonality: boolean;
     includeToneGuidelines: boolean;
     includeDosDonts: boolean;
     includeChannelAdaptation: boolean;
-    channels: string[];            // Which channels to cover
+    channels: string[];
     maxOutputTokens: number;
+    estimatedTokensMin: number;
+    estimatedTokensMax: number;
     estimatedTokens: number;
 }
 
 export const VOICE_PRESETS: Record<PresetLevel, VoicePresetConfig> = {
     fast: {
         depth: "basic",
-        channelExamples: 1,
+        channelExamples: 0,
         includePersonality: true,
         includeToneGuidelines: false,
         includeDosDonts: false,
         includeChannelAdaptation: false,
         channels: ["general"],
-        maxOutputTokens: 600,
+        maxOutputTokens: 1500,
+        estimatedTokensMin: 800,
+        estimatedTokensMax: 1200,
         estimatedTokens: 1000,
     },
     balanced: {
         depth: "standard",
-        channelExamples: 2,
+        channelExamples: 1,
         includePersonality: true,
         includeToneGuidelines: true,
         includeDosDonts: true,
         includeChannelAdaptation: false,
         channels: ["general", "social", "email"],
-        maxOutputTokens: 1500,
-        estimatedTokens: 2000,
+        maxOutputTokens: 3000,
+        estimatedTokensMin: 2000,
+        estimatedTokensMax: 2800,
+        estimatedTokens: 2400,
     },
     quality: {
         depth: "comprehensive",
-        channelExamples: 3,
+        channelExamples: 2,
         includePersonality: true,
         includeToneGuidelines: true,
         includeDosDonts: true,
         includeChannelAdaptation: true,
         channels: ["general", "social", "email", "advertising", "customer_support", "internal"],
-        maxOutputTokens: 3000,
-        estimatedTokens: 4000,
+        maxOutputTokens: 6000,
+        estimatedTokensMin: 4000,
+        estimatedTokensMax: 5500,
+        estimatedTokens: 4800,
     },
 };
 
@@ -114,16 +134,18 @@ export const VOICE_PRESETS: Record<PresetLevel, VoicePresetConfig> = {
 // =============================================================================
 
 export interface VisualPresetConfig {
-    colorVariants: number;         // Number of color palette options
-    typographyPairings: number;    // Number of font pairing options
-    logoDirections: number;        // Number of logo concept directions
+    colorVariants: number;
+    typographyPairings: number;
+    logoDirections: number;
     includeMoodboard: boolean;
     includeUsageGuidelines: boolean;
     includeAccessibility: boolean;
     includeApplicationExamples: boolean;
-    applicationScreens: number;    // Number of mockup screens
-    components: string[];          // Which visual components to include
+    applicationScreens: number;
+    components: string[];
     maxOutputTokens: number;
+    estimatedTokensMin: number;
+    estimatedTokensMax: number;
     estimatedTokens: number;
 }
 
@@ -138,7 +160,9 @@ export const VISUAL_PRESETS: Record<PresetLevel, VisualPresetConfig> = {
         includeApplicationExamples: false,
         applicationScreens: 0,
         components: ["palette", "typography", "logo_concepts"],
-        maxOutputTokens: 800,
+        maxOutputTokens: 2000,
+        estimatedTokensMin: 1000,
+        estimatedTokensMax: 1500,
         estimatedTokens: 1200,
     },
     balanced: {
@@ -149,9 +173,11 @@ export const VISUAL_PRESETS: Record<PresetLevel, VisualPresetConfig> = {
         includeUsageGuidelines: true,
         includeAccessibility: false,
         includeApplicationExamples: true,
-        applicationScreens: 3,
+        applicationScreens: 2,
         components: ["palette", "typography", "logo_concepts", "moodboard", "usage_guidelines", "applications"],
-        maxOutputTokens: 2000,
+        maxOutputTokens: 4000,
+        estimatedTokensMin: 2500,
+        estimatedTokensMax: 3500,
         estimatedTokens: 3000,
     },
     quality: {
@@ -162,7 +188,7 @@ export const VISUAL_PRESETS: Record<PresetLevel, VisualPresetConfig> = {
         includeUsageGuidelines: true,
         includeAccessibility: true,
         includeApplicationExamples: true,
-        applicationScreens: 6,
+        applicationScreens: 5,
         components: [
             "palette",
             "typography",
@@ -174,21 +200,25 @@ export const VISUAL_PRESETS: Record<PresetLevel, VisualPresetConfig> = {
             "iconography",
             "photography_style",
         ],
-        maxOutputTokens: 4000,
-        estimatedTokens: 5000,
+        maxOutputTokens: 8000,
+        estimatedTokensMin: 5000,
+        estimatedTokensMax: 7000,
+        estimatedTokens: 6000,
     },
 };
 
 // =============================================================================
-// GENERIC STAGE PRESETS (for stages without specific config)
+// GENERIC STAGE PRESETS
 // =============================================================================
 
 export interface GenericPresetConfig {
     depth: "basic" | "standard" | "comprehensive";
     numVariants: number;
     includeExamples: boolean;
-    selfCheckRounds: number;       // AI self-verification rounds
+    selfCheckRounds: number;
     maxOutputTokens: number;
+    estimatedTokensMin: number;
+    estimatedTokensMax: number;
     estimatedTokens: number;
 }
 
@@ -198,24 +228,30 @@ export const GENERIC_PRESETS: Record<PresetLevel, GenericPresetConfig> = {
         numVariants: 1,
         includeExamples: false,
         selfCheckRounds: 0,
-        maxOutputTokens: 500,
-        estimatedTokens: 800,
+        maxOutputTokens: 1000,
+        estimatedTokensMin: 500,
+        estimatedTokensMax: 800,
+        estimatedTokens: 650,
     },
     balanced: {
         depth: "standard",
         numVariants: 2,
         includeExamples: true,
         selfCheckRounds: 1,
-        maxOutputTokens: 1200,
-        estimatedTokens: 1800,
+        maxOutputTokens: 2000,
+        estimatedTokensMin: 1200,
+        estimatedTokensMax: 1800,
+        estimatedTokens: 1500,
     },
     quality: {
         depth: "comprehensive",
         numVariants: 3,
         includeExamples: true,
         selfCheckRounds: 2,
-        maxOutputTokens: 2500,
-        estimatedTokens: 3500,
+        maxOutputTokens: 4000,
+        estimatedTokensMin: 2500,
+        estimatedTokensMax: 3500,
+        estimatedTokens: 3000,
     },
 };
 

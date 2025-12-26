@@ -154,26 +154,26 @@ export async function POST(request: NextRequest) {
 
             if (moduleA) {
                 stages.push(
-                    { stageKey: "A1", name: "Contexto & Posicionamiento", module: "A" as const, order: 1 },
-                    { stageKey: "A2", name: "Naming Estratégico", module: "A" as const, order: 2 },
-                    { stageKey: "A3", name: "Manifiesto & Narrativa", module: "A" as const, order: 3 },
-                    { stageKey: "A4", name: "Identidad Visual", module: "A" as const, order: 4 },
-                    { stageKey: "A5", name: "Aplicaciones de Marca", module: "A" as const, order: 5 },
-                    { stageKey: "A6", name: "Cierre / Entrega", module: "A" as const, order: 6 }
+                    { displayKey: "A1", stageKey: "context", name: "Contexto & Posicionamiento", module: "A" as const, order: 1 },
+                    { displayKey: "A2", stageKey: "naming", name: "Naming Estratégico", module: "A" as const, order: 2 },
+                    { displayKey: "A3", stageKey: "manifesto", name: "Manifiesto & Narrativa", module: "A" as const, order: 3 },
+                    { displayKey: "A4", stageKey: "visual_identity", name: "Identidad Visual", module: "A" as const, order: 4 },
+                    { displayKey: "A5", stageKey: "applications", name: "Aplicaciones de Marca", module: "A" as const, order: 5 },
+                    { displayKey: "A6", stageKey: "closing", name: "Cierre / Entrega", module: "A" as const, order: 6 }
                 );
             }
 
             if (moduleB) {
                 const baseOrder = moduleA ? 7 : 1;
                 stages.push(
-                    { stageKey: "B1", name: "Briefing (PM)", module: "B" as const, order: baseOrder },
-                    { stageKey: "B2", name: "Consumer Insights", module: "B" as const, order: baseOrder + 1 },
-                    { stageKey: "B3", name: "Competitive Strategy", module: "B" as const, order: baseOrder + 2 },
-                    { stageKey: "B4", name: "CSO (Cascada de Elecciones)", module: "B" as const, order: baseOrder + 3 },
-                    { stageKey: "B5", name: "Brand Metrics", module: "B" as const, order: baseOrder + 4 },
-                    { stageKey: "B6", name: "Brand Narrative", module: "B" as const, order: baseOrder + 5 },
-                    { stageKey: "B7", name: "Integración PM + Verificación", module: "B" as const, order: baseOrder + 6 },
-                    { stageKey: "B8", name: "Entrega Strategy Pack", module: "B" as const, order: baseOrder + 7 }
+                    { displayKey: "B1", stageKey: "briefing", name: "Briefing (PM)", module: "B" as const, order: baseOrder },
+                    { displayKey: "B2", stageKey: "insights", name: "Consumer Insights", module: "B" as const, order: baseOrder + 1 },
+                    { displayKey: "B3", stageKey: "strategy", name: "Competitive Strategy", module: "B" as const, order: baseOrder + 2 },
+                    { displayKey: "B4", stageKey: "cso", name: "CSO (Cascada de Elecciones)", module: "B" as const, order: baseOrder + 3 },
+                    { displayKey: "B5", stageKey: "metrics", name: "Brand Metrics", module: "B" as const, order: baseOrder + 4 },
+                    { displayKey: "B6", stageKey: "narrative", name: "Brand Narrative", module: "B" as const, order: baseOrder + 5 },
+                    { displayKey: "B7", stageKey: "integration", name: "Integración PM + Verificación", module: "B" as const, order: baseOrder + 6 },
+                    { displayKey: "B8", stageKey: "delivery", name: "Entrega Strategy Pack", module: "B" as const, order: baseOrder + 7 }
                 );
             }
 

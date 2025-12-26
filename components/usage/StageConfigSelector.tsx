@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { TokenBudgetBar } from "./TokenBudgetBar";
 import { useModels, isLegacyModel, getLegacyModelPlaceholder } from "@/hooks/useModels";
 import type { ModelDescriptor, Provider } from "@/hooks/useModels";
+import {
+    NAMING_PRESETS,
+    VOICE_PRESETS,
+    VISUAL_PRESETS,
+    GENERIC_PRESETS,
+    type PresetLevel
+} from "@/lib/ai/presets";
 
 // Preset info for display
 const PRESET_INFO = {
@@ -30,15 +37,21 @@ const PRESET_INFO = {
     },
 };
 
-// Token estimates per stage and preset
-const TOKEN_ESTIMATES: Record<string, Record<string, number>> = {
-    naming: { fast: 800, balanced: 1500, quality: 3000 },
-    voice: { fast: 1000, balanced: 2000, quality: 4000 },
-    visual_identity: { fast: 1200, balanced: 3000, quality: 5000 },
-    default: { fast: 800, balanced: 1800, quality: 3500 },
-};
-
-type PresetLevel = "fast" | "balanced" | "quality";
+// Helper: Get estimates from presets
+function getPresetEstimates(stageKey: string, preset: PresetLevel) {
+    let config;
+    switch (stageKey) {
+        case "naming": config = NAMING_PRESETS[preset]; break;
+        case "voice": config = VOICE_PRESETS[preset]; break;
+        case "visual_identity": config = VISUAL_PRESETS[preset]; break;
+        default: config = GENERIC_PRESETS[preset]; break;
+    }
+    return {
+        min: config.estimatedTokensMin,
+        max: config.estimatedTokensMax,
+        avg: config.estimatedTokens
+    };
+}
 
 interface StageConfigSelectorProps {
     stageKey: string;
@@ -62,8 +75,14 @@ export function StageConfigSelector({
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
 
-    const estimates = TOKEN_ESTIMATES[stageKey] || TOKEN_ESTIMATES.default;
-    const estimatedTokens = estimates[preset];
+    // Calculate estimates for all presets to display in the selector
+    const allPresetEstimates = {
+        fast: getPresetEstimates(stageKey, "fast"),
+        balanced: getPresetEstimates(stageKey, "balanced"),
+        quality: getPresetEstimates(stageKey, "quality"),
+    };
+
+    const estimates = allPresetEstimates[preset];
 
     // Get the selected model descriptor
     const selectedModel: ModelDescriptor | null = selectedModelId
@@ -182,7 +201,7 @@ export function StageConfigSelector({
                                 {info.name}
                             </div>
                             <div className="text-xs text-zinc-500 mt-1">
-                                ~{estimates[key].toLocaleString()} tokens
+                                ~{allPresetEstimates[key].avg.toLocaleString()} tokens
                             </div>
                         </button>
                     )
@@ -324,12 +343,9 @@ export function StageConfigSelector({
             <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/50 border border-zinc-800">
                 <span className="text-sm text-zinc-400">Estimado para esta ejecución:</span>
                 <span className="text-sm font-medium text-white">
-                    ~{estimatedTokens.toLocaleString()} tokens
+                    ~{estimates.avg.toLocaleString()} tokens
                 </span>
             </div>
         </div>
     );
 }
-
-export { TokenBudgetBar } from "./TokenBudgetBar";
-export { TokenEstimate } from "./TokenBudgetBar";

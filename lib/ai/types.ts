@@ -5,7 +5,7 @@
  * Used by all AI providers (OpenAI, Mock, future providers).
  */
 
-export type AIProviderType = "OPENAI" | "MOCK";
+export type AIProviderType = "OPENAI" | "ANTHROPIC" | "MOCK";
 
 export interface AIMessage {
     role: "system" | "user" | "assistant";

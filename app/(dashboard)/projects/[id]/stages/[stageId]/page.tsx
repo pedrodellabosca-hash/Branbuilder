@@ -154,7 +154,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                             </span>
                         </div>
                         <h1 className="text-2xl font-bold text-white">
-                            {stage.stageKey}. {stage.name}
+                            {stage.displayKey || stage.stageKey}. {stage.name}
                         </h1>
                         {stage.description && (
                             <p className="text-slate-400 mt-2">{stage.description}</p>

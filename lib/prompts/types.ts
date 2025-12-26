@@ -12,6 +12,7 @@ export interface PromptContext {
     isRegenerate: boolean;
     projectName?: string;
     previousContent?: object;
+    presetConfig?: Record<string, unknown>;
 }
 
 export interface ParseResult<T = object> {

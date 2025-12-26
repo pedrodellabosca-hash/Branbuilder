@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { getAIProvider } from "@/lib/ai";
 import { getStagePrompt } from "@/lib/prompts";
+import { deserializeConfig } from "@/lib/ai/resolve-config";
+import type { EffectiveConfig } from "@/lib/ai/config";
 
 /**
  * Process a job synchronously (for dev mode or inline processing)
@@ -74,8 +76,8 @@ interface JobData {
 }
 
 async function processGenerateOutput(job: JobData): Promise<object> {
-    const payload = job.payload as { stageId?: string };
-    const stageId = payload.stageId;
+    const payload = job.payload as Record<string, unknown>;
+    const stageId = payload.stageId as string | undefined;
 
     if (!stageId) {
         throw new Error("Missing stageId in payload");
@@ -106,25 +108,53 @@ async function processGenerateOutput(job: JobData): Promise<object> {
 
     const isRegenerate = job.type === "REGENERATE_OUTPUT";
 
+    // Fetch full job with runConfig from DB (Source of Truth)
+    const fullJob = await prisma.job.findUnique({
+        where: { id: job.id },
+        select: { runConfig: true, payload: true }
+    });
+
+    // Restore effective config (Prioritize DB runConfig, fallback to payload)
+    let runConfig: EffectiveConfig | null = null;
+    try {
+        if (fullJob?.runConfig) {
+            runConfig = deserializeConfig(fullJob.runConfig as Record<string, unknown>);
+            console.log(`[JobProcessor] Using persisted DB config: ${runConfig?.provider}/${runConfig?.model}`);
+        } else {
+            // Fallback to payload for older jobs
+            runConfig = deserializeConfig(payload);
+            if (runConfig) console.log(`[JobProcessor] Using payload config (fallback): ${runConfig.provider}/${runConfig.model}`);
+        }
+    } catch (e) {
+        console.warn("[JobProcessor] Failed to deserialize config, using defaults", e);
+    }
+
     // Get prompt from registry
     const prompt = getStagePrompt(stage.stageKey);
     console.log(`[JobProcessor] Using prompt: ${prompt.id} v${prompt.version}`);
 
-    // Build messages with context
+    // Build messages with context AND preset config
     const messages = prompt.buildMessages({
         stageName: stage.name,
         stageKey: stage.stageKey,
         isRegenerate,
         projectName: stage.project.name,
+        // Pass preset config if available
+        presetConfig: runConfig?.presetConfig
     });
 
     // Get AI provider and generate content
-    const provider = getAIProvider();
-    console.log(`[JobProcessor] Calling AI provider: ${provider.type}`);
+    // Use provider from config if available, otherwise default
+    const providerType = runConfig?.provider || "OPENAI";
+    const provider = getAIProvider(providerType);
+    console.log(`[JobProcessor] Calling AI provider: ${provider.type} (Model: ${runConfig?.model || "default"})`);
 
     const aiResponse = await provider.complete({
         messages,
-        temperature: 0.7,
+        // Use params from config
+        temperature: runConfig?.temperature || 0.7,
+        maxTokens: runConfig?.resolvedMaxTokens, // Use the resolved limit from preset
+        model: runConfig?.model || undefined, // Pass specific model if supported by provider wrapper
     });
 
     console.log(`[JobProcessor] AI response received (${aiResponse.usage?.totalTokens || 0} tokens)`);

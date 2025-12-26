@@ -226,13 +226,15 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
             module: stage.module,
             stage: stageKey,
             type: jobType,
+            // Persist the effective configuration (Source of Truth)
+            runConfig: serializeConfig(effectiveConfig) as any,
             payload: {
                 stageId: stage.id,
                 outputId: output.id,
                 stageKey,
                 projectName: project.name,
                 userId,
-                // Effective AI configuration
+                // Keep config in payload for redundancy/compatibility
                 ...serializeConfig(effectiveConfig),
             },
         },
@@ -318,8 +320,8 @@ async function processStageJob(
             stageKey,
             isRegenerate,
             projectName,
-            // Note: presetConfig is stored in job payload for reference
-            // Prompts can be extended to use it in the future
+            // Pass preset config from effective config
+            presetConfig: effectiveConfig.presetConfig
         });
 
         // Get AI provider and generate content
