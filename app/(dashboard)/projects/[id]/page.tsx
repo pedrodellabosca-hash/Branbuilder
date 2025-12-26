@@ -189,7 +189,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                 return (
                                     <Link
                                         key={stage.id}
-                                        href={`/projects/${project.id}/stages/${stage.id}`}
+                                        href={`/projects/${project.id}/stages/${stage.stageKey}`}
                                         className="flex items-center justify-between px-5 py-3 hover:bg-slate-800/50 transition-colors group"
                                     >
                                         <div className="flex items-center gap-3">
@@ -242,7 +242,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                 return (
                                     <Link
                                         key={stage.id}
-                                        href={`/projects/${project.id}/stages/${stage.id}`}
+                                        href={`/projects/${project.id}/stages/${stage.stageKey}`}
                                         className="flex items-center justify-between px-5 py-3 hover:bg-slate-800/50 transition-colors group"
                                     >
                                         <div className="flex items-center gap-3">

@@ -10,12 +10,12 @@ import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-    params: Promise<{ id: string; stageId: string }>;
+    params: Promise<{ id: string; stageKey: string }>;
     searchParams: Promise<{ jobId?: string }>;
 }
 
 async function getStageWithProject(
-    stageId: string,
+    stageKey: string,
     projectId: string,
     clerkOrgId: string
 ) {
@@ -31,7 +31,7 @@ async function getStageWithProject(
     // Get stage with project - multi-tenant check via project.orgId
     const stage = await prisma.stage.findFirst({
         where: {
-            id: stageId,
+            stageKey,
             projectId,
             project: {
                 orgId: org.id,
@@ -88,7 +88,7 @@ async function getJobStatus(jobId: string, orgId: string) {
 
 export default async function StageDetailPage({ params, searchParams }: PageProps) {
     const { userId, orgId } = await auth();
-    const { id: projectId, stageId } = await params;
+    const { id: projectId, stageKey } = await params;
     const { jobId: jobIdParam } = await searchParams;
 
     if (!userId) {
@@ -99,7 +99,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
         redirect("/projects");
     }
 
-    const stage = await getStageWithProject(stageId, projectId, orgId);
+    const stage = await getStageWithProject(stageKey, projectId, orgId);
 
     if (!stage) {
         notFound();
@@ -148,7 +148,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
 
                 {/* AI Config Selector */}
                 <div className="w-full max-w-sm">
-                    <StageConfigSelector projectId={projectId} stageId={stageId} />
+                    <StageConfigSelector projectId={projectId} stageKey={stageKey} />
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -179,7 +179,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                 <h2 className="text-lg font-semibold text-white mb-4">Acciones</h2>
                 <StageActions
                     projectId={projectId}
-                    stageId={stageId}
+                    stageId={stage.id}
                     stageKey={stage.stageKey}
                     module={stage.module as "A" | "B"}
                     status={stage.status}

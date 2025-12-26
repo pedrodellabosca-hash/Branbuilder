@@ -125,16 +125,27 @@ export async function GET(
                     outputKey: output.outputKey,
                 }
                 : null,
-            versions: output?.versions.map((v) => ({
-                id: v.id,
-                version: v.version,
-                content: v.content,
-                provider: v.provider,
-                model: v.model,
-                status: v.status,
-                type: v.type,
-                createdAt: v.createdAt,
-            })) || [],
+            versions: output?.versions.map((v) => {
+                const params = v.generationParams as any || {};
+                return {
+                    id: v.id,
+                    version: v.version,
+                    content: v.content,
+                    provider: v.provider,
+                    model: v.model,
+                    status: v.status,
+                    type: v.type,
+                    createdAt: v.createdAt,
+                    runInfo: {
+                        provider: v.provider,
+                        model: v.model,
+                        preset: params.preset || null,
+                        inputTokens: params.tokensIn || 0,
+                        outputTokens: params.tokensOut || 0,
+                        totalTokens: params.totalTokens || 0,
+                    }
+                };
+            }) || [],
             latestVersion: output?.versions[0] || null, // Always the absolute latest
             currentVersion: currentVersion ? { // The one to display
                 id: currentVersion.id,
@@ -145,6 +156,14 @@ export async function GET(
                 status: currentVersion.status,
                 type: currentVersion.type,
                 createdAt: currentVersion.createdAt,
+                runInfo: {
+                    provider: currentVersion.provider,
+                    model: currentVersion.model,
+                    preset: (currentVersion.generationParams as any)?.preset || null,
+                    inputTokens: (currentVersion.generationParams as any)?.tokensIn || 0,
+                    outputTokens: (currentVersion.generationParams as any)?.tokensOut || 0,
+                    totalTokens: (currentVersion.generationParams as any)?.totalTokens || 0,
+                }
             } : null,
         });
     } catch (error) {

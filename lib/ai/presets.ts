@@ -14,6 +14,50 @@ export const PRESET_LEVELS = ["fast", "balanced", "quality"] as const;
 export type PresetLevel = typeof PRESET_LEVELS[number];
 
 // =============================================================================
+// CONTEXT PRESETS
+// =============================================================================
+
+export interface ContextPresetConfig {
+    depth: "basic" | "standard" | "comprehensive";
+    includeCompetitors: boolean;
+    competitorCount: number;
+    maxOutputTokens: number;
+    estimatedTokensMin: number;
+    estimatedTokensMax: number;
+    estimatedTokens: number;
+}
+
+export const CONTEXT_PRESETS: Record<PresetLevel, ContextPresetConfig> = {
+    fast: {
+        depth: "basic",
+        includeCompetitors: false,
+        competitorCount: 0,
+        maxOutputTokens: 1000,
+        estimatedTokensMin: 500,
+        estimatedTokensMax: 800,
+        estimatedTokens: 650,
+    },
+    balanced: {
+        depth: "standard",
+        includeCompetitors: true,
+        competitorCount: 3,
+        maxOutputTokens: 2000,
+        estimatedTokensMin: 1200,
+        estimatedTokensMax: 1800,
+        estimatedTokens: 1500,
+    },
+    quality: {
+        depth: "comprehensive",
+        includeCompetitors: true,
+        competitorCount: 5,
+        maxOutputTokens: 4000,
+        estimatedTokensMin: 2500,
+        estimatedTokensMax: 3500,
+        estimatedTokens: 3000,
+    },
+};
+
+// =============================================================================
 // NAMING PRESETS
 // =============================================================================
 
@@ -263,13 +307,16 @@ export type StagePresetConfig =
     | NamingPresetConfig
     | VoicePresetConfig
     | VisualPresetConfig
-    | GenericPresetConfig;
+    | GenericPresetConfig
+    | ContextPresetConfig;
 
 /**
  * Get the preset configuration for a stage
  */
 export function getPresetConfig(stageKey: string, preset: PresetLevel): StagePresetConfig {
     switch (stageKey) {
+        case "context":
+            return CONTEXT_PRESETS[preset];
         case "naming":
             return NAMING_PRESETS[preset];
         case "voice":

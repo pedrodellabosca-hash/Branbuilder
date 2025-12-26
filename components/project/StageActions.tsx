@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Play, RefreshCw, CheckCircle, Loader2, AlertCircle, Clock, Sparkles } from "lucide-react";
+import { Play, RefreshCw, CheckCircle, Loader2, AlertCircle, Clock, Sparkles, Pencil, X, Save } from "lucide-react";
 
 interface StageActionsProps {
     projectId: string;
@@ -25,6 +25,14 @@ interface OutputVersion {
     status: string;
     type: string;
     createdAt: string;
+    runInfo?: {
+        provider: string;
+        model: string;
+        preset: string | null;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+    };
 }
 
 interface OutputData {
@@ -55,6 +63,11 @@ export function StageActions({
     // Output state (fetched from /output endpoint)
     const [outputData, setOutputData] = useState<OutputData | null>(null);
     const [isLoadingOutput, setIsLoadingOutput] = useState(false);
+
+    // Editing State
+    const [isEditing, setIsEditing] = useState(false);
+    const [seedText, setSeedText] = useState("");
+
 
     const canGenerate = status === "NOT_STARTED";
     const canRegenerate = status === "GENERATED" || status === "APPROVED" || status === "REGENERATED";
@@ -152,8 +165,7 @@ export function StageActions({
     // Deterministic: in cooldown if value > 0
     const inCooldown = cooldownUntil > 0;
 
-    const enqueueJob = async () => {
-        // ... (existing enqueueJob logic) ...
+    const enqueueJob = async (useDraft = false) => {
         // Guard: prevent double-click and cooldown
         if (isLoading || inCooldown) return;
 
@@ -179,14 +191,27 @@ export function StageActions({
             cooldownTimerRef.current = null;
         }, COOLDOWN_MS);
 
-        console.log("[StageActions] Running stage:", { projectId, stageKey });
+        console.log("[StageActions] Running stage:", { projectId, stageKey, useDraft });
 
         try {
             // Use new /run endpoint (handles idempotency server-side)
             const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    regenerate: true, // Always regenerate when button clicked here
+                    seedText: useDraft ? seedText : undefined
+                })
             });
+
+            // Note: The /run endpoint expects body options to be merged into params 
+            // In a real implementation we might need to adjust runStage route to accept body overrides
+            // For now assuming the route handler maps body to RunStageParams
+
+            if (useDraft) {
+                // Exit edit mode on success submission
+                setIsEditing(false);
+            }
 
             if (!response.ok) {
                 const data = await response.json();
@@ -361,50 +386,86 @@ export function StageActions({
             {getJobStatusUI()}
 
             {/* Action buttons */}
-            <div className="flex flex-wrap gap-3">
-                {/* Generate button */}
-                <button
-                    onClick={enqueueJob}
-                    disabled={!canGenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
-                >
-                    {isLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Play className="w-4 h-4" />
-                    )}
-                    {isLoading ? "Generando..." : "Generar"}
-                </button>
+            {!isEditing ? (
+                <div className="flex flex-wrap gap-3">
+                    {/* Generate button */}
+                    <button
+                        onClick={() => enqueueJob(false)}
+                        disabled={!canGenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
+                    >
+                        {isLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Play className="w-4 h-4" />
+                        )}
+                        {isLoading ? "Generando..." : "Generar"}
+                    </button>
 
-                {/* Regenerate button */}
-                <button
-                    onClick={enqueueJob}
-                    disabled={!canRegenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
-                >
-                    {isLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <RefreshCw className="w-4 h-4" />
-                    )}
-                    {isLoading ? "Regenerando..." : "Regenerar"}
-                </button>
+                    {/* Regenerate button */}
+                    <button
+                        onClick={() => enqueueJob(false)}
+                        disabled={!canRegenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
+                    >
+                        {isLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <RefreshCw className="w-4 h-4" />
+                        )}
+                        {isLoading ? "Regenerando..." : "Regenerar"}
+                    </button>
 
-                {/* Approve button */}
-                <button
-                    onClick={approveStage}
-                    disabled={!canApprove || isLoading}
-                    title={!canApprove ? "Solo se puede aprobar después de generar" : ""}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
-                >
-                    {isLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <CheckCircle className="w-4 h-4" />
+                    {/* Edit button */}
+                    {displayedVersion && (
+                        <button
+                            onClick={() => {
+                                setIsEditing(true);
+                                setSeedText(renderContent(displayedVersion.content));
+                            }}
+                            disabled={isLoading}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                        >
+                            <Pencil className="w-4 h-4" />
+                            Editar
+                        </button>
                     )}
-                    Aprobar
-                </button>
-            </div>
+
+                    {/* Approve button */}
+                    <button
+                        onClick={approveStage}
+                        disabled={!canApprove || isLoading}
+                        title={!canApprove ? "Solo se puede aprobar después de generar" : ""}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
+                    >
+                        {isLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <CheckCircle className="w-4 h-4" />
+                        )}
+                        Aprobar
+                    </button>
+                </div>
+            ) : (
+                <div className="flex flex-wrap gap-3">
+                    <button
+                        onClick={() => enqueueJob(true)}
+                        disabled={isLoading || inCooldown || !seedText.trim()}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        Regenerar desde borrador
+                    </button>
+                    <button
+                        onClick={() => setIsEditing(false)}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                        <X className="w-4 h-4" />
+                        Cancelar
+                    </button>
+                </div>
+            )}
 
             {/* Status hints */}
             <div className="text-xs text-slate-500">
@@ -448,18 +509,64 @@ export function StageActions({
                                         Volver a la última versión
                                     </button>
                                 )}
-                                {displayedVersion.provider && (
-                                    <span className="bg-slate-700 px-2 py-0.5 rounded">
-                                        {displayedVersion.provider}/{displayedVersion.model || "default"}
+                                <div className="group relative">
+                                    <span className="bg-slate-700 px-2 py-0.5 rounded flex items-center gap-1.5 cursor-help">
+                                        {displayedVersion.provider === "OPENAI" && "🤖"}
+                                        {displayedVersion.provider === "ANTHROPIC" && "🔮"}
+                                        {displayedVersion.model || "default"}
+                                        {displayedVersion.runInfo?.preset && (
+                                            <>
+                                                <span className="text-slate-500">•</span>
+                                                <span className={
+                                                    displayedVersion.runInfo.preset === "quality" ? "text-purple-400" :
+                                                        displayedVersion.runInfo.preset === "balanced" ? "text-blue-400" :
+                                                            displayedVersion.runInfo.preset === "fast" ? "text-yellow-400" : "text-slate-400"
+                                                }>
+                                                    {displayedVersion.runInfo.preset.charAt(0).toUpperCase() + displayedVersion.runInfo.preset.slice(1)}
+                                                </span>
+                                            </>
+                                        )}
                                     </span>
-                                )}
+                                    {displayedVersion.runInfo && (
+                                        <div className="absolute top-full right-0 mt-2 w-48 p-3 bg-slate-900 border border-slate-700 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                            <div className="text-xs font-medium text-slate-300 mb-2 border-b border-slate-800 pb-1">
+                                                Token Usage
+                                            </div>
+                                            <div className="space-y-1 text-xs">
+                                                <div className="flex justify-between text-slate-500">
+                                                    <span>Input:</span>
+                                                    <span className="font-mono">{displayedVersion.runInfo.inputTokens.toLocaleString()}</span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-500">
+                                                    <span>Output:</span>
+                                                    <span className="font-mono">{displayedVersion.runInfo.outputTokens.toLocaleString()}</span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-300 font-medium pt-1 border-t border-slate-800 mt-1">
+                                                    <span>Total:</span>
+                                                    <span className="font-mono text-emerald-400">{displayedVersion.runInfo.totalTokens.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                                 <span>{formatDate(displayedVersion.createdAt)}</span>
                             </div>
                         </div>
-                        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
-                            <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
-                                {renderContent(displayedVersion.content)}
-                            </pre>
+                        <div className="bg-slate-900 rounded-lg p-4 bg-slate-900 overflow-hidden">
+                            {isEditing ? (
+                                <textarea
+                                    value={seedText}
+                                    onChange={(e) => setSeedText(e.target.value)}
+                                    className="w-full h-96 bg-slate-800 text-slate-200 p-4 rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm resize-y"
+                                    placeholder="Edita el contenido aquí para guiar la regeneración..."
+                                />
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
+                                        {renderContent(displayedVersion.content)}
+                                    </pre>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -473,6 +580,9 @@ export function StageActions({
                             <div className="space-y-2">
                                 {outputData.versions.map((v) => {
                                     const isCurrent = displayedVersion?.id === v.id;
+                                    const hasMetadata = v.runInfo;
+                                    const presetLabel = hasMetadata?.preset ? hasMetadata.preset.charAt(0).toUpperCase() + hasMetadata.preset.slice(1) : "";
+
                                     return (
                                         <button
                                             key={v.id}
@@ -486,9 +596,45 @@ export function StageActions({
                                                 <span className={`font-medium ${isCurrent ? "text-white" : "text-slate-300"}`}>
                                                     v{v.version}
                                                 </span>
-                                                <span className="text-slate-400 text-xs">
-                                                    {v.provider || "manual"}/{v.model || "-"}
-                                                </span>
+
+                                                {/* Metadata with Tooltip */}
+                                                <div className="group relative">
+                                                    <span className="text-slate-400 text-xs flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900/50 border border-slate-700/50">
+                                                        {v.provider === "OPENAI" && "🤖"}
+                                                        {v.provider === "ANTHROPIC" && "🔮"}
+                                                        {v.model || "Manual"}
+                                                        {presetLabel && <span className="text-slate-600">•</span>}
+                                                        {presetLabel && <span className={
+                                                            hasMetadata?.preset === "quality" ? "text-purple-400" :
+                                                                hasMetadata?.preset === "balanced" ? "text-blue-400" :
+                                                                    hasMetadata?.preset === "fast" ? "text-yellow-400" : "text-slate-400"
+                                                        }>{presetLabel}</span>}
+                                                    </span>
+
+                                                    {/* Tooltip Content */}
+                                                    {hasMetadata && (
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 border border-slate-700 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                                            <div className="text-xs font-medium text-slate-300 mb-2 border-b border-slate-800 pb-1">
+                                                                Token Usage
+                                                            </div>
+                                                            <div className="space-y-1 text-xs">
+                                                                <div className="flex justify-between text-slate-500">
+                                                                    <span>Input:</span>
+                                                                    <span className="font-mono">{hasMetadata.inputTokens.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="flex justify-between text-slate-500">
+                                                                    <span>Output:</span>
+                                                                    <span className="font-mono">{hasMetadata.outputTokens.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="flex justify-between text-slate-300 font-medium pt-1 border-t border-slate-800 mt-1">
+                                                                    <span>Total:</span>
+                                                                    <span className="font-mono text-emerald-400">{hasMetadata.totalTokens.toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45"></div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                             <span className="text-slate-500 text-xs">
                                                 {formatDate(v.createdAt)}
@@ -500,7 +646,8 @@ export function StageActions({
                         </div>
                     )}
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

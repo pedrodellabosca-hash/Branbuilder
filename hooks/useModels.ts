@@ -24,6 +24,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // =============================================================================
 
 interface UseModelsReturn {
+    activeProvider: Provider | null;
     models: ModelDescriptor[];
     providers: Provider[];
     defaultsByPreset: Record<PresetLevel, { provider: Provider; model: string }>;
@@ -106,6 +107,7 @@ export function useModels(): UseModelsReturn {
     }, [data]);
 
     return {
+        activeProvider: data?.activeProvider || null,
         models: data?.models || [],
         providers: data?.providers || [],
         defaultsByPreset: data?.defaultsByPreset || {

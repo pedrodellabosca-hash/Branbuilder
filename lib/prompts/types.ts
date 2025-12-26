@@ -13,6 +13,7 @@ export interface PromptContext {
     projectName?: string;
     previousContent?: object;
     presetConfig?: Record<string, unknown>;
+    seedText?: string;
 }
 
 export interface ParseResult<T = object> {

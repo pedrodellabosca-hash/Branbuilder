@@ -9,6 +9,7 @@ import {
     VOICE_PRESETS,
     VISUAL_PRESETS,
     GENERIC_PRESETS,
+    CONTEXT_PRESETS,
     type PresetLevel
 } from "@/lib/ai/presets";
 
@@ -41,6 +42,7 @@ const PRESET_INFO = {
 function getPresetEstimates(stageKey: string, preset: PresetLevel) {
     let config;
     switch (stageKey) {
+        case "context": config = CONTEXT_PRESETS[preset]; break;
         case "naming": config = NAMING_PRESETS[preset]; break;
         case "voice": config = VOICE_PRESETS[preset]; break;
         case "visual_identity": config = VISUAL_PRESETS[preset]; break;
@@ -68,12 +70,22 @@ export function StageConfigSelector({
     onConfigChange,
     className = "",
 }: StageConfigSelectorProps) {
-    const { models, loading, defaultsByPreset, getRecommendedModel, isModelAvailable } = useModels();
+    const { models, loading, defaultsByPreset, getRecommendedModel, isModelAvailable, activeProvider } = useModels();
 
     const [preset, setPreset] = useState<PresetLevel>("balanced");
     const [selectedModelId, setSelectedModelId] = useState<string | null>(initialModel || null);
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
+
+    // Health Check State
+    const [aiHealth, setAiHealth] = useState<{ provider: string; ready: boolean; error: string | null } | null>(null);
+
+    useEffect(() => {
+        fetch("/api/ai/health")
+            .then(res => res.json())
+            .then(data => setAiHealth(data))
+            .catch(err => console.error("Failed to fetch AI health:", err));
+    }, []);
 
     // Calculate estimates for all presets to display in the selector
     const allPresetEstimates = {
@@ -192,8 +204,8 @@ export function StageConfigSelector({
                             key={key}
                             onClick={() => handlePresetChange(key)}
                             className={`p-3 rounded-xl border transition-all ${preset === key
-                                    ? `${info.bgColor} border-current ${info.color}`
-                                    : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                                ? `${info.bgColor} border-current ${info.color}`
+                                : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
                                 }`}
                         >
                             <div className="text-2xl mb-1">{info.icon}</div>
@@ -227,114 +239,156 @@ export function StageConfigSelector({
             {/* Model selector (advanced) */}
             {showAdvanced && (
                 <div className="relative">
-                    {/* Legacy model warning */}
-                    {isLegacy && selectedModel && (
-                        <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                    {/* 1. MOCK MODE BANNER */}
+                    {(activeProvider === "MOCK" || aiHealth?.provider === "MOCK") && (
+                        <div className="mb-3 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
                             <div className="flex items-start gap-3">
-                                <span className="text-red-400 text-lg">⚠️</span>
-                                <div className="flex-1">
-                                    <div className="text-sm font-medium text-red-400">Modelo no disponible</div>
-                                    <div className="text-xs text-red-400/70 mt-1">
-                                        {selectedModel.deprecatedMessage || "Este modelo ya no está disponible."}
+                                <span className="text-xl">🧪</span>
+                                <div>
+                                    <div className="text-sm font-medium text-indigo-300">Modo Demo (Mock)</div>
+                                    <div className="text-xs text-indigo-400/70 mt-1 mb-2">
+                                        Estás usando el proveedor de pruebas. Los resultados son simulados y no tienen costo.
+                                        Para usar modelos reales (GPT-4, Claude), configura una API Key.
                                     </div>
-                                    <button
-                                        onClick={handleUseRecommended}
-                                        className="mt-2 text-xs font-medium text-blue-400 hover:text-blue-300"
-                                    >
-                                        Usar modelo recomendado →
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded border border-indigo-500/20">
+                                            Provider: MOCK
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <button
-                        onClick={() => setShowModelPicker(!showModelPicker)}
-                        disabled={loading}
-                        className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between ${isLegacy
-                                ? "bg-red-900/20 border-red-500/30"
-                                : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
-                            } ${loading ? "opacity-50 cursor-wait" : ""}`}
-                    >
-                        {loading ? (
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse" />
-                                <div className="text-sm text-zinc-400">Cargando modelos...</div>
-                            </div>
-                        ) : selectedModel ? (
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-lg">
-                                    {getProviderIcon(selectedModel.provider)}
-                                </div>
-                                <div className="text-left">
-                                    <div className={`text-sm font-medium ${isLegacy ? "text-red-400" : "text-white"}`}>
-                                        {selectedModel.label}
-                                        {selectedModel.recommendedForPreset?.includes(preset) && (
-                                            <span className="ml-2 text-xs text-emerald-400">Recomendado</span>
-                                        )}
-                                    </div>
-                                    <div className="text-xs text-zinc-500">
-                                        {getSpeedLabel(selectedModel.speed)} • {getQualityLabel(selectedModel.quality)}
+                    {/* 2. CONFIGURATION ERROR BANNER (OPENAI but not ready) */}
+                    {activeProvider === "OPENAI" && aiHealth && !aiHealth.ready && (
+                        <div className="mb-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                            <div className="flex items-start gap-3">
+                                <span className="text-xl">⚠️</span>
+                                <div>
+                                    <div className="text-sm font-medium text-amber-300">Configuración Incompleta</div>
+                                    <div className="text-xs text-amber-400/70 mt-1 mb-2">
+                                        Se ha detectado el proveedor OPENAI pero la configuración no es válida.
+                                        {aiHealth.error ? ` Error: ${aiHealth.error}` : " Por favor revisa tu archivo .env."}
                                     </div>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="text-sm text-zinc-400">Seleccionar modelo</div>
-                        )}
-                        <svg
-                            className={`w-5 h-5 text-zinc-500 transition-transform ${showModelPicker ? "rotate-180" : ""}`}
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </button>
+                        </div>
+                    )}
 
-                    {showModelPicker && !loading && (
-                        <div className="absolute z-10 w-full mt-2 py-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl max-h-80 overflow-auto">
-                            {Object.entries(modelsByProvider).map(([provider, providerModels]) => (
-                                <div key={provider}>
-                                    <div className="px-4 py-2 text-xs font-medium text-zinc-500 uppercase">
-                                        {getProviderIcon(provider as Provider)} {provider}
+                    {/* 3. MODEL SELECTOR (Only if ready or Mock) */}
+                    {(activeProvider === "MOCK" || (activeProvider === "OPENAI" && aiHealth?.ready)) && (
+                        <>
+                            {/* Legacy model warning */}
+                            {isLegacy && selectedModel && (
+                                <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-red-400 text-lg">⚠️</span>
+                                        <div className="flex-1">
+                                            <div className="text-sm font-medium text-red-400">Modelo no disponible</div>
+                                            <div className="text-xs text-red-400/70 mt-1">
+                                                {selectedModel.deprecatedMessage || "Este modelo ya no está disponible."}
+                                            </div>
+                                            <button
+                                                onClick={handleUseRecommended}
+                                                className="mt-2 text-xs font-medium text-blue-400 hover:text-blue-300"
+                                            >
+                                                Usar modelo recomendado →
+                                            </button>
+                                        </div>
                                     </div>
-                                    {providerModels.map((model) => (
-                                        <button
-                                            key={model.id}
-                                            onClick={() => handleModelChange(model)}
-                                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors ${selectedModelId === model.id ? "bg-zinc-800" : ""
-                                                }`}
-                                        >
-                                            <div className="w-8 h-8 rounded-lg bg-zinc-700 flex items-center justify-center text-lg">
-                                                {getProviderIcon(model.provider)}
+                                </div>
+                            )}
+
+                            <button
+                                onClick={() => setShowModelPicker(!showModelPicker)}
+                                disabled={loading}
+                                className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between ${isLegacy
+                                    ? "bg-red-900/20 border-red-500/30"
+                                    : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                                    } ${loading ? "opacity-50 cursor-wait" : ""}`}
+                            >
+                                {loading ? (
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse" />
+                                        <div className="text-sm text-zinc-400">Cargando modelos...</div>
+                                    </div>
+                                ) : selectedModel ? (
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-lg">
+                                            {getProviderIcon(selectedModel.provider)}
+                                        </div>
+                                        <div className="text-left">
+                                            <div className={`text-sm font-medium ${isLegacy ? "text-red-400" : "text-white"}`}>
+                                                {selectedModel.label}
+                                                {selectedModel.recommendedForPreset?.includes(preset) && (
+                                                    <span className="ml-2 text-xs text-emerald-400">Recomendado</span>
+                                                )}
                                             </div>
-                                            <div className="text-left flex-1">
-                                                <div className="text-sm font-medium text-white flex items-center gap-2">
-                                                    {model.label}
-                                                    {model.recommendedForPreset?.includes(preset) && (
-                                                        <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                                                            Recomendado
-                                                        </span>
+                                            <div className="text-xs text-zinc-500">
+                                                {getSpeedLabel(selectedModel.speed)} • {getQualityLabel(selectedModel.quality)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-zinc-400">Seleccionar modelo</div>
+                                )}
+                                <svg
+                                    className={`w-5 h-5 text-zinc-500 transition-transform ${showModelPicker ? "rotate-180" : ""}`}
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            {showModelPicker && !loading && (
+                                <div className="absolute z-10 w-full mt-2 py-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl max-h-80 overflow-auto">
+                                    {Object.entries(modelsByProvider).map(([provider, providerModels]) => (
+                                        <div key={provider}>
+                                            <div className="px-4 py-2 text-xs font-medium text-zinc-500 uppercase">
+                                                {getProviderIcon(provider as Provider)} {provider}
+                                            </div>
+                                            {providerModels.map((model) => (
+                                                <button
+                                                    key={model.id}
+                                                    onClick={() => handleModelChange(model)}
+                                                    className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors ${selectedModelId === model.id ? "bg-zinc-800" : ""
+                                                        }`}
+                                                >
+                                                    <div className="w-8 h-8 rounded-lg bg-zinc-700 flex items-center justify-center text-lg">
+                                                        {getProviderIcon(model.provider)}
+                                                    </div>
+                                                    <div className="text-left flex-1">
+                                                        <div className="text-sm font-medium text-white flex items-center gap-2">
+                                                            {model.label}
+                                                            {model.recommendedForPreset?.includes(preset) && (
+                                                                <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                                                                    Recomendado
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-zinc-500">
+                                                            {getSpeedLabel(model.speed)} • {getQualityLabel(model.quality)}
+                                                        </div>
+                                                    </div>
+                                                    {selectedModelId === model.id && (
+                                                        <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path
+                                                                fillRule="evenodd"
+                                                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                                clipRule="evenodd"
+                                                            />
+                                                        </svg>
                                                     )}
-                                                </div>
-                                                <div className="text-xs text-zinc-500">
-                                                    {getSpeedLabel(model.speed)} • {getQualityLabel(model.quality)}
-                                                </div>
-                                            </div>
-                                            {selectedModelId === model.id && (
-                                                <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path
-                                                        fillRule="evenodd"
-                                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                                        clipRule="evenodd"
-                                                    />
-                                                </svg>
-                                            )}
-                                        </button>
+                                                </button>
+                                            ))}
+                                        </div>
                                     ))}
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        </>
                     )}
                 </div>
             )}

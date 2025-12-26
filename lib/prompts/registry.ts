@@ -10,10 +10,12 @@ import { namingPrompt } from "./stages/naming";
 import { manifestoPrompt } from "./stages/manifesto";
 import { voicePrompt } from "./stages/voice";
 import { taglinePrompt } from "./stages/tagline";
+import { contextPrompt } from "./stages/context";
 import { defaultPrompt } from "./stages/default";
 
 // Registry of all stage prompts
 const promptRegistry: Record<string, StagePrompt> = {
+    context: contextPrompt,
     naming: namingPrompt,
     manifesto: manifestoPrompt,
     voice: voicePrompt,

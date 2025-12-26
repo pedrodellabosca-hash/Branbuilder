@@ -7,8 +7,18 @@ async function main() {
     console.log("🚀 Testing Stage Config Persistence & Usage");
 
     // 1. Setup Data
-    const org = await prisma.organization.findFirst();
-    if (!org) throw new Error("No org found");
+    let org = await prisma.organization.findFirst();
+    if (!org) {
+        console.log("Creating default org for testing...");
+        org = await prisma.organization.create({
+            data: {
+                clerkOrgId: "org_test_" + Date.now(),
+                name: "Test Org",
+                slug: "test-org",
+                plan: "BASIC"
+            }
+        });
+    }
 
     const user = await prisma.orgMember.findFirst({ where: { orgId: org.id } });
     const userId = user?.userId || "test_user";

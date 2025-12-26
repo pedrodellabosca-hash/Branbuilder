@@ -12,37 +12,38 @@ const configSchema = z.object({
 
 export async function PUT(
     request: Request,
-    { params }: { params: Promise<{ id: string; stageId: string }> }
+    { params }: { params: Promise<{ id: string; stageKey: string }> }
 ) {
     const { userId, orgId } = await auth();
     if (!userId || !orgId) {
         return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { id: projectId, stageId } = await params;
+    const { id: projectId, stageKey } = await params;
 
     try {
         const json = await request.json();
         const config = configSchema.parse(json);
 
-        // Verify ownership
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, org: { clerkOrgId: orgId } }
+        // Verify ownership & Get Stage ID
+        const stage = await prisma.stage.findFirst({
+            where: {
+                stageKey: stageKey,
+                projectId: projectId,
+                project: { org: { clerkOrgId: orgId } }
+            },
         });
 
-        if (!project) return new NextResponse("Project not found", { status: 404 });
+        if (!stage) return new NextResponse("Stage not found", { status: 404 });
 
-        const stage = await prisma.stage.update({
-            where: {
-                id: stageId,
-                projectId: projectId,
-            },
+        const updatedStage = await prisma.stage.update({
+            where: { id: stage.id },
             data: {
                 config: config,
             } as any,
         });
 
-        return NextResponse.json((stage as any).config);
+        return NextResponse.json((updatedStage as any).config);
     } catch (error) {
         console.error("[Config] Update failed:", error);
         return new NextResponse("Invalid request", { status: 400 });
@@ -51,18 +52,18 @@ export async function PUT(
 
 export async function GET(
     request: Request,
-    { params }: { params: Promise<{ id: string; stageId: string }> }
+    { params }: { params: Promise<{ id: string; stageKey: string }> }
 ) {
     const { userId, orgId } = await auth();
     if (!userId || !orgId) {
         return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { id: projectId, stageId } = await params;
+    const { id: projectId, stageKey } = await params;
 
     const stage = await prisma.stage.findFirst({
         where: {
-            id: stageId,
+            stageKey: stageKey,
             projectId: projectId,
             project: { org: { clerkOrgId: orgId } }
         },

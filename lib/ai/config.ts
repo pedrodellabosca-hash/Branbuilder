@@ -43,7 +43,9 @@ export interface RunConfig {
     maxOutputTokens?: number;
 
     // Optional overrides (advanced)
+    // Optional overrides (advanced)
     customInstructions?: string;
+    seedText?: string;
 }
 
 export interface EffectiveConfig extends RunConfig {

@@ -14,7 +14,7 @@ import { type ModelsResponse, type ModelDescriptor } from "@/lib/ai/model-regist
 
 interface StageConfigSelectorProps {
     projectId: string;
-    stageId: string;
+    stageKey: string;
     defaultConfig?: {
         provider?: string;
         model?: string;
@@ -24,7 +24,7 @@ interface StageConfigSelectorProps {
 
 export const StageConfigSelector: React.FC<StageConfigSelectorProps> = ({
     projectId,
-    stageId,
+    stageKey,
     defaultConfig,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -47,7 +47,7 @@ export const StageConfigSelector: React.FC<StageConfigSelectorProps> = ({
             try {
                 const [modelsRes, configRes] = await Promise.all([
                     fetch("/api/ai/models"),
-                    fetch(`/api/projects/${projectId}/stages/${stageId}/config`)
+                    fetch(`/api/projects/${projectId}/stages/${stageKey}/config`)
                 ]);
 
                 if (modelsRes.ok) {
@@ -79,7 +79,7 @@ export const StageConfigSelector: React.FC<StageConfigSelectorProps> = ({
             }
         }
         init();
-    }, [projectId, stageId]);
+    }, [projectId, stageKey]);
 
     // Handle Preset Change
     const handlePresetChange = (newPreset: string) => {
@@ -100,7 +100,7 @@ export const StageConfigSelector: React.FC<StageConfigSelectorProps> = ({
     const handleSave = async () => {
         setSaving(true);
         try {
-            const res = await fetch(`/api/projects/${projectId}/stages/${stageId}/config`, {
+            const res = await fetch(`/api/projects/${projectId}/stages/${stageKey}/config`, {
                 method: "PUT",
                 body: JSON.stringify({ provider, model, preset }),
             });
@@ -161,8 +161,8 @@ export const StageConfigSelector: React.FC<StageConfigSelectorProps> = ({
                                 key={p}
                                 onClick={() => handlePresetChange(p)}
                                 className={`text-xs py-1.5 px-3 rounded-md transition-all font-medium flex items-center justify-center gap-1.5 ${preset === p
-                                        ? "bg-slate-800 text-white shadow-sm ring-1 ring-slate-700"
-                                        : "text-slate-500 hover:text-slate-300 hover:bg-slate-900"
+                                    ? "bg-slate-800 text-white shadow-sm ring-1 ring-slate-700"
+                                    : "text-slate-500 hover:text-slate-300 hover:bg-slate-900"
                                     }`}
                             >
                                 {p === "fast" && <Zap className="w-3 h-3" />}

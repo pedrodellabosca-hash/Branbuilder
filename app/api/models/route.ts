@@ -32,6 +32,7 @@ export async function GET() {
 
         // Return minimal fallback response
         return NextResponse.json({
+            activeProvider: process.env.AI_PROVIDER || "OPENAI", // Expose active provider
             providers: ["OPENAI"],
             models: [
                 {

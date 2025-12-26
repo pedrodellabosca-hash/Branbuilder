@@ -12,6 +12,7 @@ import { z } from "zod";
 // =============================================================================
 
 export const STAGE_KEYS = [
+    "context",
     "naming",
     "manifesto",
     "voice",
@@ -22,6 +23,11 @@ export const STAGE_KEYS = [
     "visual_identity",
 ] as const;
 
+// ... (schema registry updates below) ...
+// (I will do a separate replace for the STAGE_KEYS array to avoid context drift, 
+// wait, I can do it here if I am careful. But the file is long. I'll split schema vs keys.)
+
+
 export type StageKey = (typeof STAGE_KEYS)[number];
 
 export function isValidStageKey(key: string): key is StageKey {
@@ -31,6 +37,27 @@ export function isValidStageKey(key: string): key is StageKey {
 // =============================================================================
 // INDIVIDUAL STAGE SCHEMAS
 // =============================================================================
+
+/**
+ * Context stage output schema
+ */
+export const ContextOutputSchema = z.object({
+    marketSummary: z.string(),
+    targetAudience: z.object({
+        demographics: z.string(),
+        psychographics: z.string(),
+        painPoints: z.array(z.string()),
+        needs: z.array(z.string()),
+    }),
+    competitorAnalysis: z.object({
+        direct: z.array(z.string()),
+        indirect: z.array(z.string()),
+        differentiation: z.string(),
+    }),
+    positioningStatement: z.string(),
+});
+
+export type ContextOutput = z.infer<typeof ContextOutputSchema>;
 
 /**
  * Naming stage output schema
@@ -102,6 +129,7 @@ export const PassthroughOutputSchema = z.any();
 // =============================================================================
 
 export const StageOutputSchemas: Record<StageKey, z.ZodSchema<unknown>> = {
+    context: ContextOutputSchema,
     naming: NamingOutputSchema,
     manifesto: ManifestoOutputSchema,
     voice: VoiceOutputSchema,

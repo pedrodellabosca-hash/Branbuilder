@@ -24,11 +24,24 @@ export async function POST(
 
         const { id: projectId, stageKey } = await params;
 
+        // Parse optional body for overrides
+        let body = {};
+        try {
+            if (request.headers.get("content-type")?.includes("application/json")) {
+                body = await request.json();
+            }
+        } catch (e) {
+            // Ignore parse errors, body remains empty
+        }
+
+        const { regenerate, seedText } = body as { regenerate?: boolean; seedText?: string };
+
         // Delegate to centralized runStage service
         const result = await runStage({
             projectId,
             stageKey,
-            regenerate: false,
+            regenerate: regenerate ?? false,
+            seedText,
             userId,
             orgId,
         });
