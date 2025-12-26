@@ -17,7 +17,7 @@ interface PageProps {
 async function getStageWithProject(
     stageKeyOrDisplay: string,
     projectId: string,
-    orgId: string
+    dbOrgId: string
 ) {
     // Get stage with project - multi-tenant check via project.orgId
     // Search by either stageKey OR displayKey
@@ -29,7 +29,7 @@ async function getStageWithProject(
                 { displayKey: stageKeyOrDisplay } // Allow resolving by displayKey (e.g. "context")
             ],
             project: {
-                orgId: orgId,
+                orgId: dbOrgId,
                 status: { not: "DELETED" },
             },
         },
@@ -57,11 +57,11 @@ async function getStageWithProject(
     return stage;
 }
 
-async function getJobStatus(jobId: string, orgId: string) {
+async function getJobStatus(jobId: string, dbOrgId: string) {
     const job = await prisma.job.findFirst({
         where: {
             id: jobId,
-            orgId: orgId,
+            orgId: dbOrgId,
         },
         select: {
             id: true,
@@ -76,7 +76,7 @@ async function getJobStatus(jobId: string, orgId: string) {
 }
 
 export default async function StageDetailPage({ params, searchParams }: PageProps) {
-    const { userId, orgId } = await auth();
+    const { userId, orgId: clerkOrgId } = await auth();
     const { id: projectId, stageKey } = params;
     const { jobId: jobIdParam } = searchParams;
 
@@ -84,13 +84,13 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
         redirect("/sign-in");
     }
 
-    if (!orgId) {
+    if (!clerkOrgId) {
         redirect("/projects");
     }
 
     // Optimization: Resolve org once for the page
     const org = await prisma.organization.findUnique({
-        where: { clerkOrgId: orgId },
+        where: { clerkOrgId },
     });
 
     if (!org) {
