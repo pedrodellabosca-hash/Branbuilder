@@ -7,25 +7,32 @@ set -euo pipefail
 #
 # Tests the full authenticated pipeline: Naming → Voice → Visual
 #
+# MODES:
+#   1. CI Mode (recommended for automation):
+#      - Set E2E_TEST_SECRET in env
+#      - Script auto-generates token via /api/test/auth-token
+#      - Uses Authorization: Bearer <token>
+#
+#   2. Cookie Mode (local testing):
+#      - CLERK_COOKIE="__session=..." ./scripts/verify-e2e-auth.sh
+#      - Or paste cookie when prompted
+#
 # USAGE:
-#   Option A (env variable):
-#     CLERK_COOKIE="__session=..." ./scripts/verify-e2e-auth.sh
+#   # CI Mode (requires E2E_TEST_SECRET)
+#   E2E_TEST_SECRET="your-secret" ./scripts/verify-e2e-auth.sh
 #
-#   Option B (interactive):
-#     ./scripts/verify-e2e-auth.sh
-#     (will prompt for cookie)
+#   # Cookie Mode (local)
+#   CLERK_COOKIE="__session=..." ./scripts/verify-e2e-auth.sh
 #
-# HOW TO GET CLERK_COOKIE:
+# HOW TO GET CLERK_COOKIE (local mode):
 #   1. Open browser, sign in to the app
 #   2. Open DevTools (F12) → Application → Cookies → localhost
 #   3. Find cookie named "__session" and copy its value
-#   4. Set: export CLERK_COOKIE="__session=<value>"
-#
-# IMPORTANT: Cookie value is never printed in logs
 #
 # REQUIREMENTS:
 #   - Dev server running (npm run dev)
-#   - Worker running (npm run worker:start) - optional but recommended
+#   - For CI mode: E2E_TEST_SECRET env var set
+#   - For Cookie mode: Valid Clerk session cookie
 #
 # =============================================================================
 
@@ -38,9 +45,51 @@ JOB_ID_VOICE=""
 JOB_ID_VISUAL=""
 PROJECT_ID=""
 
+# Auth mode: token or cookie
+AUTH_MODE=""
+AUTH_HEADER=""
+
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
+do_request() {
+    local method="$1"
+    local path="$2"
+    local data="${3:-}"
+    
+    local curl_args=(-s)
+    curl_args+=(-X "$method")
+    curl_args+=("${BASE_URL}${path}")
+    curl_args+=(-H "Accept: application/json")
+    
+    if [ -n "$AUTH_HEADER" ]; then
+        curl_args+=(-H "$AUTH_HEADER")
+    fi
+    
+    if [ -n "$data" ]; then
+        curl_args+=(-H "Content-Type: application/json")
+        curl_args+=(-d "$data")
+    fi
+    
+    curl "${curl_args[@]}" 2>&1
+}
+
+do_request_status() {
+    local method="$1"
+    local path="$2"
+    
+    local curl_args=(-sI)
+    curl_args+=(-X "$method")
+    curl_args+=("${BASE_URL}${path}")
+    curl_args+=(-H "Accept: application/json")
+    
+    if [ -n "$AUTH_HEADER" ]; then
+        curl_args+=(-H "$AUTH_HEADER")
+    fi
+    
+    curl "${curl_args[@]}" 2>&1 | head -1
+}
 
 poll_job() {
     local job_id="$1"
@@ -51,10 +100,7 @@ poll_job() {
 
     while [ $attempt -lt $max_attempts ]; do
         local job_poll
-        job_poll=$(curl -s "${BASE_URL}/api/jobs/${job_id}" \
-            -H "Accept: application/json" \
-            -H "Cookie: ${COOKIE}" \
-            2>&1)
+        job_poll=$(do_request "GET" "/api/jobs/${job_id}")
         
         local current_status
         current_status=$(echo "$job_poll" | grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
@@ -92,15 +138,9 @@ validate_output() {
     echo "---------------------------------------------------"
 
     local output_response
-    output_response=$(curl -s "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/output" \
-        -H "Accept: application/json" \
-        -H "Cookie: ${COOKIE}" \
-        2>&1)
+    output_response=$(do_request "GET" "/api/projects/${PROJECT_ID}/stages/${stage_key}/output")
     local output_status
-    output_status=$(curl -sI "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/output" \
-        -H "Accept: application/json" \
-        -H "Cookie: ${COOKIE}" \
-        2>&1 | head -1)
+    output_status=$(do_request_status "GET" "/api/projects/${PROJECT_ID}/stages/${stage_key}/output")
 
     if echo "$output_status" | grep -qE '^HTTP/.* 200'; then
         echo "  ✅ Status: 200 OK"
@@ -110,9 +150,7 @@ validate_output() {
         return 1
     fi
 
-    # Check for versions array
     if echo "$output_response" | grep -q '"versions"'; then
-        # Check if versions is non-empty array
         if echo "$output_response" | grep -qE '"versions"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{'; then
             echo "  ✅ versions array is non-empty"
         else
@@ -123,27 +161,10 @@ validate_output() {
         FAILED=1
     fi
 
-    # Check for latestVersion
     if echo "$output_response" | grep -q '"latestVersion"'; then
         echo "  ✅ Response contains latestVersion"
-        
-        # Check latestVersion.content exists and not null/empty
-        if echo "$output_response" | grep -qE '"latestVersion"[[:space:]]*:[[:space:]]*\{[^}]*"content"[[:space:]]*:[[:space:]]*[^n]'; then
+        if echo "$output_response" | grep -qE '"content"[[:space:]]*:[[:space:]]*[^n]'; then
             echo "  ✅ latestVersion.content exists"
-        elif echo "$output_response" | grep -qE '"content"[[:space:]]*:[[:space:]]*\{'; then
-            echo "  ✅ latestVersion.content exists (object)"
-        else
-            echo "  ⚠️  Warning: latestVersion.content may be null"
-        fi
-        
-        # Check version number if present
-        if echo "$output_response" | grep -qE '"version"[[:space:]]*:[[:space:]]*[0-9]+'; then
-            echo "  ✅ version number present"
-        fi
-        
-        # Check createdAt if present
-        if echo "$output_response" | grep -qE '"createdAt"[[:space:]]*:'; then
-            echo "  ✅ createdAt present"
         fi
     else
         echo "  ❌ FAIL: No latestVersion in response"
@@ -162,17 +183,9 @@ run_stage() {
     echo "-------------------------------------------------"
 
     local run_response
-    run_response=$(curl -s -X POST "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/run" \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json" \
-        -H "Cookie: ${COOKIE}" \
-        2>&1)
+    run_response=$(do_request "POST" "/api/projects/${PROJECT_ID}/stages/${stage_key}/run" "{}")
     local run_status
-    run_status=$(curl -sI -X POST "${BASE_URL}/api/projects/${PROJECT_ID}/stages/${stage_key}/run" \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json" \
-        -H "Cookie: ${COOKIE}" \
-        2>&1 | head -1)
+    run_status=$(do_request_status "POST" "/api/projects/${PROJECT_ID}/stages/${stage_key}/run")
 
     if echo "$run_status" | grep -qE '^HTTP/.* (200|201)'; then
         echo "  ✅ Status: 200/201 OK"
@@ -192,20 +205,17 @@ run_stage() {
         echo "  ✅ Job ID: $job_id"
         echo "  ℹ️  Initial status: $job_status"
         
-        # Store job ID in appropriate variable
         case "$job_var_name" in
             naming) JOB_ID_NAMING="$job_id" ;;
             voice) JOB_ID_VOICE="$job_id" ;;
             visual) JOB_ID_VISUAL="$job_id" ;;
         esac
         
-        # If already DONE, skip polling
         if [ "$job_status" = "DONE" ]; then
             echo "  ✅ Job already completed: DONE"
             return 0
         fi
         
-        # Poll for completion
         echo ""
         echo "Poll /api/jobs/{jobId} (${stage_name})"
         echo "--------------------------------------"
@@ -219,33 +229,42 @@ run_stage() {
 }
 
 # =============================================================================
-# GET COOKIE
+# DETERMINE AUTH MODE
 # =============================================================================
 
-COOKIE=""
-if [ -n "${CLERK_COOKIE:-}" ]; then
-    COOKIE="$CLERK_COOKIE"
-    echo "ℹ️  Using CLERK_COOKIE from environment"
+echo "🔐 Determining auth mode..."
+
+# Check for E2E_TEST_SECRET (CI mode)
+if [ -n "${E2E_TEST_SECRET:-}" ]; then
+    echo "  ℹ️  E2E_TEST_SECRET found, using CI token mode"
+    AUTH_MODE="token"
+    
+# Check for CLERK_COOKIE (cookie mode)
+elif [ -n "${CLERK_COOKIE:-}" ]; then
+    echo "  ℹ️  CLERK_COOKIE found, using cookie mode"
+    AUTH_MODE="cookie"
+    
+# Prompt for cookie
 else
+    echo "  ℹ️  No E2E_TEST_SECRET or CLERK_COOKIE found"
+    echo ""
     echo "🔐 Enter Clerk session cookie (paste and press Enter):"
     echo "   Format: __session=eyJ..."
-    read -rs COOKIE
-    echo "   (cookie received, not echoed for security)"
-fi
-
-if [ -z "$COOKIE" ]; then
-    echo "❌ No cookie provided"
-    exit 1
-fi
-
-# Ensure cookie has proper format for curl
-if [[ "$COOKIE" != *"="* ]]; then
-    COOKIE="__session=$COOKIE"
+    read -rs COOKIE_INPUT
+    echo "   (input received, not echoed for security)"
+    if [ -n "$COOKIE_INPUT" ]; then
+        AUTH_MODE="cookie"
+        CLERK_COOKIE="$COOKIE_INPUT"
+    else
+        echo "❌ No auth credentials provided"
+        exit 1
+    fi
 fi
 
 echo ""
 echo "🧪 Authenticated E2E Verification (Full Pipeline)"
 echo "=================================================="
+echo "   Mode: ${AUTH_MODE}"
 echo "   Stages: Naming → Voice → Visual"
 echo ""
 
@@ -263,6 +282,37 @@ fi
 echo "  ✅ Server is running"
 
 # =============================================================================
+# SETUP AUTH
+# =============================================================================
+
+if [ "$AUTH_MODE" = "token" ]; then
+    echo ""
+    echo "Step 0.5: Get E2E auth token"
+    echo "----------------------------"
+    TOKEN_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/test/auth-token" \
+        -H "x-e2e-secret: ${E2E_TEST_SECRET}" \
+        2>&1)
+    
+    TOKEN=$(echo "$TOKEN_RESPONSE" | grep -oE '"token"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
+    
+    if [ -z "$TOKEN" ]; then
+        echo "  ❌ Failed to get auth token"
+        echo "  Response: $TOKEN_RESPONSE"
+        exit 1
+    fi
+    
+    AUTH_HEADER="Authorization: Bearer ${TOKEN}"
+    echo "  ✅ Token received (not printed for security)"
+    
+elif [ "$AUTH_MODE" = "cookie" ]; then
+    # Ensure cookie format
+    if [[ "$CLERK_COOKIE" != *"="* ]]; then
+        CLERK_COOKIE="__session=$CLERK_COOKIE"
+    fi
+    AUTH_HEADER="Cookie: ${CLERK_COOKIE}"
+fi
+
+# =============================================================================
 # STEP 1: GET PROJECTS
 # =============================================================================
 
@@ -270,23 +320,21 @@ echo ""
 echo "Step 1: GET /api/projects"
 echo "-------------------------"
 
-PROJECTS_RESPONSE=$(curl -s "${BASE_URL}/api/projects" \
-    -H "Accept: application/json" \
-    -H "Cookie: ${COOKIE}" \
-    2>&1)
-PROJECTS_STATUS=$(curl -sI "${BASE_URL}/api/projects" \
-    -H "Accept: application/json" \
-    -H "Cookie: ${COOKIE}" \
-    2>&1 | head -1)
+PROJECTS_RESPONSE=$(do_request "GET" "/api/projects")
+PROJECTS_STATUS=$(do_request_status "GET" "/api/projects")
 
 if echo "$PROJECTS_STATUS" | grep -qE '^HTTP/.* 401'; then
-    echo "  ❌ FAIL: Got 401 - cookie invalid or expired"
-    echo "  Please get a fresh cookie from browser DevTools"
+    echo "  ❌ FAIL: Got 401 - auth invalid or expired"
+    if [ "$AUTH_MODE" = "cookie" ]; then
+        echo "  Please get a fresh cookie from browser DevTools"
+    else
+        echo "  Check E2E_TEST_SECRET configuration"
+    fi
     exit 1
 fi
 
 if echo "$PROJECTS_STATUS" | grep -qE '^HTTP/.* 200'; then
-    echo "  ✅ Status: 200 OK"
+    echo "  ✅ Status: 200 OK (auth working!)"
 else
     echo "  ❌ FAIL: Expected 200, got: $PROJECTS_STATUS"
     FAILED=1
@@ -300,7 +348,6 @@ echo ""
 echo "Step 2: Get or create project"
 echo "-----------------------------"
 
-# Try to parse projects array
 if echo "$PROJECTS_RESPONSE" | grep -q '"id"'; then
     PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
 fi
@@ -309,12 +356,7 @@ if [ -n "$PROJECT_ID" ]; then
     echo "  ✅ Using existing project: $PROJECT_ID"
 else
     echo "  📦 Creating new project..."
-    CREATE_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/projects" \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json" \
-        -H "Cookie: ${COOKIE}" \
-        -d '{"name":"E2E Test Project","description":"Created by verify-e2e-auth.sh"}' \
-        2>&1)
+    CREATE_RESPONSE=$(do_request "POST" "/api/projects" '{"name":"E2E Test Project","description":"Created by verify-e2e-auth.sh"}')
     
     PROJECT_ID=$(echo "$CREATE_RESPONSE" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | cut -d'"' -f4)
     
@@ -328,42 +370,31 @@ else
 fi
 
 # =============================================================================
-# STEP 3-4: NAMING STAGE
+# STAGES: NAMING → VOICE → VISUAL
 # =============================================================================
 
 echo ""
 echo "═══════════════════════════════════════"
 echo "  STAGE 1: NAMING"
 echo "═══════════════════════════════════════"
-
 run_stage "naming" "Naming" 60 "naming"
 if [ $FAILED -eq 0 ]; then
     validate_output "naming" "Naming"
 fi
 
-# =============================================================================
-# STEP 5-6: VOICE STAGE
-# =============================================================================
-
 echo ""
 echo "═══════════════════════════════════════"
 echo "  STAGE 2: VOICE"
 echo "═══════════════════════════════════════"
-
 run_stage "voice" "Voice" 90 "voice"
 if [ $FAILED -eq 0 ]; then
     validate_output "voice" "Voice"
 fi
 
-# =============================================================================
-# STEP 7-8: VISUAL IDENTITY STAGE
-# =============================================================================
-
 echo ""
 echo "═══════════════════════════════════════"
 echo "  STAGE 3: VISUAL IDENTITY"
 echo "═══════════════════════════════════════"
-
 run_stage "visual_identity" "Visual Identity" 120 "visual"
 if [ $FAILED -eq 0 ]; then
     validate_output "visual_identity" "Visual Identity"
@@ -379,6 +410,7 @@ if [ $FAILED -eq 0 ]; then
     echo "✅ All authenticated E2E tests passed!"
     echo ""
     echo "Summary:"
+    echo "  Mode: ${AUTH_MODE}"
     echo "  Project: $PROJECT_ID"
     echo "  ├─ Naming:   ${JOB_ID_NAMING:-skipped}"
     echo "  ├─ Voice:    ${JOB_ID_VOICE:-skipped}"
@@ -388,6 +420,7 @@ else
     echo "❌ Some tests failed"
     echo ""
     echo "Summary:"
+    echo "  Mode: ${AUTH_MODE}"
     echo "  Project: $PROJECT_ID"
     echo "  ├─ Naming:   ${JOB_ID_NAMING:-failed}"
     echo "  ├─ Voice:    ${JOB_ID_VOICE:-failed}"

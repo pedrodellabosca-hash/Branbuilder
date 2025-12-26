@@ -27,6 +27,25 @@ export const proxy = clerkMiddleware(async (auth, request) => {
     // Get auth state
     const { userId } = await auth()
 
+    // Check for E2E test token (only in non-production)
+    if (!userId && process.env.NODE_ENV !== 'production') {
+        const authHeader = request.headers.get('authorization')
+        if (authHeader?.startsWith('Bearer ')) {
+            const token = authHeader.slice(7)
+            // Dynamically import to avoid loading in production
+            const { validateE2EToken } = await import('@/lib/auth/e2e-token')
+            const result = await validateE2EToken(token)
+            if (result.valid) {
+                // E2E token valid - allow request through
+                // Set custom headers for downstream routes to identify E2E user
+                const response = NextResponse.next()
+                response.headers.set('x-e2e-user-id', result.userId)
+                response.headers.set('x-e2e-org-id', result.orgId)
+                return response
+            }
+        }
+    }
+
     // If no user session
     if (!userId) {
         // API routes: return 401 JSON (not redirect)
@@ -65,6 +84,7 @@ export const config = {
          * EXCLUDED ROUTES (by design):
          * - api/ai/ping      → Health check endpoint (must be public)
          * - api/webhooks/*   → Webhook endpoints (external services need access)
+         * - api/test/*       → E2E test endpoints (CI needs access)
          * 
          * ⚠️  CRITICAL: DO NOT add leading slashes to paths in the lookahead!
          * ⚠️  WRONG: '/api/ai/ping' - This breaks the exclusion
@@ -77,6 +97,6 @@ export const config = {
          * But NOT:
          * - /api/ai/pingX    (no boundary after 'ping')
          */
-        '/((?!_next|api/ai/ping(?:/|$)|api/webhooks/clerk(?:/|$)|api/webhooks/stripe(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+        '/((?!_next|api/ai/ping(?:/|$)|api/webhooks/clerk(?:/|$)|api/webhooks/stripe(?:/|$)|api/test(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     ],
 }
