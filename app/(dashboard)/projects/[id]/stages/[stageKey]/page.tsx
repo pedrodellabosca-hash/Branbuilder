@@ -15,7 +15,7 @@ interface PageProps {
 }
 
 async function getStageWithProject(
-    stageKey: string,
+    stageKeyOrDisplay: string,
     projectId: string,
     clerkOrgId: string
 ) {
@@ -29,10 +29,14 @@ async function getStageWithProject(
     }
 
     // Get stage with project - multi-tenant check via project.orgId
+    // Search by either stageKey OR displayKey
     const stage = await prisma.stage.findFirst({
         where: {
-            stageKey,
             projectId,
+            OR: [
+                { stageKey: stageKeyOrDisplay },
+                { displayKey: stageKeyOrDisplay } // Allow resolving by displayKey (e.g. "context")
+            ],
             project: {
                 orgId: org.id,
                 status: { not: "DELETED" },
@@ -104,6 +108,14 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     if (!stage) {
         notFound();
     }
+
+    // Canonical URL check: Redirect if current param isn't the true stageKey
+    // This ensures API calls in sub-components always use the valid stageKey
+    if (stageKey !== stage.stageKey) {
+        redirect(`/projects/${projectId}/stages/${stage.stageKey}`);
+    }
+
+
 
     // Get job status if jobId is in query
     let jobStatus: string | undefined;
