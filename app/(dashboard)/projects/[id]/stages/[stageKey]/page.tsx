@@ -160,7 +160,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
 
                 {/* AI Config Selector */}
                 <div className="w-full max-w-sm">
-                    <StageConfigSelector projectId={projectId} stageKey={stageKey} />
+                    <StageConfigSelector projectId={projectId} stageKey={stage.stageKey} />
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
