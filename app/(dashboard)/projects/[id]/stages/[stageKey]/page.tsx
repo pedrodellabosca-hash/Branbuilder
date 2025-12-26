@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Palette, LineChart, Play, CheckCircle, Circle } from "lucide-react";
+import { ArrowLeft, Palette, LineChart } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { StageActions } from "@/components/project/StageActions";
 import { StageConfigSelector } from "@/components/project/StageConfigSelector";
@@ -17,17 +17,8 @@ interface PageProps {
 async function getStageWithProject(
     stageKeyOrDisplay: string,
     projectId: string,
-    clerkOrgId: string
+    orgId: string
 ) {
-    // Get org for multi-tenant validation
-    const org = await prisma.organization.findUnique({
-        where: { clerkOrgId },
-    });
-
-    if (!org) {
-        return null;
-    }
-
     // Get stage with project - multi-tenant check via project.orgId
     // Search by either stageKey OR displayKey
     const stage = await prisma.stage.findFirst({
@@ -38,7 +29,7 @@ async function getStageWithProject(
                 { displayKey: stageKeyOrDisplay } // Allow resolving by displayKey (e.g. "context")
             ],
             project: {
-                orgId: org.id,
+                orgId: orgId,
                 status: { not: "DELETED" },
             },
         },
@@ -67,16 +58,10 @@ async function getStageWithProject(
 }
 
 async function getJobStatus(jobId: string, orgId: string) {
-    const org = await prisma.organization.findUnique({
-        where: { clerkOrgId: orgId },
-    });
-
-    if (!org) return null;
-
     const job = await prisma.job.findFirst({
         where: {
             id: jobId,
-            orgId: org.id,
+            orgId: orgId,
         },
         select: {
             id: true,
@@ -103,7 +88,16 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
         redirect("/projects");
     }
 
-    const stage = await getStageWithProject(stageKey, projectId, orgId);
+    // Optimization: Resolve org once for the page
+    const org = await prisma.organization.findUnique({
+        where: { clerkOrgId: orgId },
+    });
+
+    if (!org) {
+        redirect("/projects");
+    }
+
+    const stage = await getStageWithProject(stageKey, projectId, org.id);
 
     if (!stage) {
         notFound();
@@ -114,7 +108,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     if (stageKey !== stage.stageKey) {
         let redirectUrl = `/projects/${projectId}/stages/${stage.stageKey}`;
         if (jobIdParam) {
-            redirectUrl += `?jobId=${jobIdParam}`;
+            redirectUrl += `?jobId=${encodeURIComponent(jobIdParam)}`;
         }
         redirect(redirectUrl);
     }
@@ -124,7 +118,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     // Get job status if jobId is in query
     let jobStatus: string | undefined;
     if (jobIdParam) {
-        const job = await getJobStatus(jobIdParam, orgId);
+        const job = await getJobStatus(jobIdParam, org.id);
         if (job) {
             jobStatus = job.status;
         }
