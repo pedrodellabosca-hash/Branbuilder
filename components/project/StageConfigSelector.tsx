@@ -120,7 +120,11 @@ export const StageConfigSelector: React.FC<StageConfigSelectorProps> = ({
     if (loading) return null; // or skeleton
 
     // Filter models by provider
-    const availableModels = modelsData?.models.filter(m => m.provider === provider) || [];
+    // Hide deprecated models unless they are currently selected (legacy support)
+    const availableModels = modelsData?.models.filter(m =>
+        m.provider === provider &&
+        (!m.deprecated || m.id === model)
+    ) || [];
     const selectedModelInfo = availableModels.find(m => m.id === model);
 
     // Estimation (Mock logic based on preset)

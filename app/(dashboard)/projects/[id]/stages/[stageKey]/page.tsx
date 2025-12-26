@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Palette, LineChart } from "lucide-react";
+import { ArrowLeft, Palette, LineChart, AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { StageActions } from "@/components/project/StageActions";
 import { StageConfigSelector } from "@/components/project/StageConfigSelector";
@@ -45,9 +45,16 @@ async function getStageWithProject(
                 orderBy: { createdAt: "desc" },
                 take: 5,
                 include: {
-                    versions: {
-                        orderBy: { version: "desc" },
-                        take: 1,
+                    include: {
+                        versions: {
+                            orderBy: { version: "desc" },
+                            take: 1,
+                            select: {
+                                version: true,
+                                status: true,
+                                generationParams: true, // Fetch metadata for fallback warning
+                            },
+                        },
                     },
                 },
             },
@@ -227,6 +234,14 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                                                 {output.outputKey}
                                                 {latestVersion && ` • v${latestVersion.version}`}
                                             </p>
+
+                                            {/* Fallback Warning */}
+                                            {latestVersion && latestVersion.generationParams && (latestVersion.generationParams as any).fallbackWarning && (
+                                                <div className="flex items-center gap-1.5 mt-1 text-xs text-yellow-500">
+                                                    <AlertTriangle className="w-3 h-3" />
+                                                    <span>{(latestVersion.generationParams as any).fallbackWarning}</span>
+                                                </div>
+                                            )}
                                         </div>
                                         {latestVersion && (
                                             <span
