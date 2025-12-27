@@ -2,80 +2,66 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 
-interface RouteParams {
-    params: Promise<{ id: string; stageKey: string }>;
-}
-
-/**
- * POST /api/projects/[id]/stages/[stageKey]/approve
- * Approves a stage (changes status to APPROVED)
- */
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string; stageKey: string }> }
+) {
     try {
         const { userId, orgId } = await auth();
-        const { id: projectId, stageKey } = await params;
 
         if (!userId || !orgId) {
-            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-        }
-
-        // Get org for multi-tenant validation
-        const org = await prisma.organization.findUnique({
-            where: { clerkOrgId: orgId },
-        });
-
-        if (!org) {
             return NextResponse.json(
-                { error: "Organización no encontrada" },
-                { status: 404 }
+                { error: "Unauthorized" },
+                { status: 401 }
             );
         }
 
-        // Get stage by stageKey with multi-tenant check
+        const { id: projectId, stageKey } = await params;
+
+        // Verify project/org access
+        const project = await prisma.project.findFirst({
+            where: { id: projectId, orgId: (await prisma.organization.findUnique({ where: { clerkOrgId: orgId } }))?.id },
+        });
+
+        if (!project) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
+
+        // Find stage
         const stage = await prisma.stage.findFirst({
-            where: {
-                stageKey,
-                projectId,
-                project: {
-                    orgId: org.id,
-                    status: { not: "DELETED" },
-                },
-            },
+            where: { projectId, stageKey },
         });
 
         if (!stage) {
-            return NextResponse.json(
-                { error: "Etapa no encontrada" },
-                { status: 404 }
-            );
+            return NextResponse.json({ error: "Stage not found" }, { status: 404 });
         }
 
-        // Check if stage can be approved
-        if (stage.status !== "GENERATED" && stage.status !== "REGENERATED") {
-            return NextResponse.json(
-                { error: "Solo se pueden aprobar etapas generadas" },
-                { status: 400 }
-            );
-        }
-
-        // Update stage status to APPROVED
-        const updatedStage = await prisma.stage.update({
+        // Update Stage Status
+        await prisma.stage.update({
             where: { id: stage.id },
             data: { status: "APPROVED" },
         });
 
-        return NextResponse.json({
-            success: true,
-            stage: {
-                id: updatedStage.id,
-                stageKey: updatedStage.stageKey,
-                status: updatedStage.status,
-            },
+        // Find latest output version and mark it APPROVED too if needed
+        // (Optional based on business logic, but good for tracking which version was approved)
+        const output = await prisma.output.findFirst({
+            where: { stageId: stage.id },
+            include: { versions: { orderBy: { version: "desc" }, take: 1 } },
         });
+
+        if (output && output.versions[0]) {
+            await prisma.outputVersion.update({
+                where: { id: output.versions[0].id },
+                data: { status: "APPROVED" },
+            });
+        }
+
+        return NextResponse.json({ success: true });
+
     } catch (error) {
-        console.error("Error approving stage:", error);
+        console.error("[Stage Approve] Error:", error);
         return NextResponse.json(
-            { error: "Error aprobando etapa" },
+            { error: "Internal server error" },
             { status: 500 }
         );
     }

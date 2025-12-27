@@ -41,6 +41,9 @@ export async function GET() {
                 remaining: summary.remaining,
                 bonus: summary.bonusTokens,
                 percentUsed: Math.round(summary.percentUsed * 10) / 10,
+                // Detailed Breakdown
+                raw: summary.rawUsed,
+                billed: summary.billedUsed,
             },
             reset: {
                 date: summary.resetDate.toISOString(),

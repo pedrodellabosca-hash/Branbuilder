@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { runStage } from "@/lib/stages/runStage";
+import { moduleEngine } from "@/lib/modules/ModuleEngine";
 
 export async function POST(
     request: NextRequest,
@@ -34,16 +34,26 @@ export async function POST(
             // Ignore parse errors, body remains empty
         }
 
-        const { regenerate, seedText } = body as { regenerate?: boolean; seedText?: string };
+        const { regenerate, seedText, preset, provider, model } = body as {
+            regenerate?: boolean;
+            seedText?: string;
+            preset?: any;
+            provider?: string;
+            model?: string;
+        };
 
-        // Delegate to centralized runStage service
-        const result = await runStage({
+        // Delegate to Module Engine
+        const result = await moduleEngine.runStage({
             projectId,
             stageKey,
-            regenerate: regenerate ?? false,
-            seedText,
             userId,
             orgId,
+            regenerate: regenerate ?? false,
+            config: {
+                preset,
+                provider,
+                model,
+            }
         });
 
         if (!result.success && result.error) {
@@ -61,6 +71,7 @@ export async function POST(
             stageId: result.stageId,
             outputId: result.outputId,
             idempotent: result.idempotent || false,
+            engineContext: result.engineContext,
         });
     } catch (error) {
         console.error("[Stage Run] Error:", error);

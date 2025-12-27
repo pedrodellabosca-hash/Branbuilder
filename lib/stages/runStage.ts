@@ -16,8 +16,10 @@ import { getStagePrompt } from "@/lib/prompts";
 import { validateStageOutput, isValidStageKey } from "./schemas";
 import { checkTokenBudget, recordUsage } from "@/lib/usage";
 import { resolveEffectiveConfig, serializeConfig } from "@/lib/ai/resolve-config";
-import type { PresetLevel } from "@/lib/ai/presets";
-import type { EffectiveConfig } from "@/lib/ai/config";
+import { type PresetLevel, isValidPreset } from "@/lib/ai/presets";
+import { type EffectiveConfig } from "@/lib/ai/config";
+import { PRESET_MULTIPLIERS } from "@/lib/ai/model-registry";
+import { outputService } from "@/lib/outputs/OutputService";
 
 // =============================================================================
 // TYPES
@@ -305,7 +307,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
 // JOB PROCESSING
 // =============================================================================
 
-async function processStageJob(
+export async function processStageJob(
     jobId: string,
     stageId: string,
     outputId: string,
@@ -381,6 +383,7 @@ async function processStageJob(
                 model: aiResponse.model,
                 inputTokens: aiResponse.usage.promptTokens || 0,
                 outputTokens: aiResponse.usage.completionTokens || 0,
+                multiplier: PRESET_MULTIPLIERS[effectiveConfig.preset] || 1.0,
             });
         }
 
@@ -403,39 +406,23 @@ async function processStageJob(
             validationError = parsedRaw.error || "Failed to parse AI output";
         }
 
-        // Get next version number
-        const latestVersion = await prisma.outputVersion.findFirst({
-            where: { outputId },
-            orderBy: { version: "desc" },
-        });
-        const newVersionNumber = (latestVersion?.version || 0) + 1;
-
-        // Create output version with full metadata
-        await prisma.outputVersion.create({
-            data: {
-                outputId,
-                version: newVersionNumber,
-                content: validatedData || parsedRaw.data || { raw: aiResponse.content },
-                provider: provider.type,
-                model: aiResponse.model,
-                promptSetVersion: `${prompt.id}@${prompt.version}`,
-                generationParams: {
-                    latencyMs,
-                    tokensIn: aiResponse.usage?.promptTokens || 0,
-                    tokensOut: aiResponse.usage?.completionTokens || 0,
-                    totalTokens: aiResponse.usage?.totalTokens || 0,
-                    preset: effectiveConfig.preset, // Persist preset
-                    validated: !validationError,
-                    validationError: validationError || undefined,
-                    fallbackWarning: effectiveConfig.fallbackWarning,
-                },
-                createdBy: userId,
-                type: "GENERATED",
-                status: validationError ? "GENERATED" : "GENERATED", // Same status, error in metadata
-            },
+        // Create output version via service
+        const newVersion = await outputService.createVersion({
+            outputId,
+            content: validatedData || parsedRaw.data || { raw: aiResponse.content },
+            provider: provider.type,
+            model: aiResponse.model,
+            promptSetVersion: `${prompt.id}@${prompt.version}`,
+            effectiveConfig,
+            userId,
+            latencyMs,
+            tokensIn: aiResponse.usage?.promptTokens || 0,
+            tokensOut: aiResponse.usage?.completionTokens || 0,
+            totalTokens: aiResponse.usage?.totalTokens || 0,
+            validationError: validationError || undefined, // undefined to match optional
         });
 
-        console.log(`[runStage] Created version ${newVersionNumber} for output ${outputId}`);
+        console.log(`[runStage] Created version ${newVersion.version} for output ${outputId}`);
 
         // Update stage status
         const newStatus = isRegenerate ? "REGENERATED" : "GENERATED";
@@ -453,7 +440,7 @@ async function processStageJob(
                 completedAt: new Date(),
                 result: {
                     outputId,
-                    versionNumber: newVersionNumber,
+                    versionNumber: newVersion.version,
                     stageKey,
                     provider: provider.type,
                     latencyMs,

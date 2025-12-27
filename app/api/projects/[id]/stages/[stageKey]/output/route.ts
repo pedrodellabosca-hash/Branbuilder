@@ -143,6 +143,8 @@ export async function GET(
                         inputTokens: params.tokensIn || 0,
                         outputTokens: params.tokensOut || 0,
                         totalTokens: params.totalTokens || 0,
+                        multiplier: params.multiplier || 1.0,
+                        billedTokens: params.billedTokens || params.totalTokens || 0,
                     }
                 };
             }) || [],
@@ -163,6 +165,8 @@ export async function GET(
                     inputTokens: (currentVersion.generationParams as any)?.tokensIn || 0,
                     outputTokens: (currentVersion.generationParams as any)?.tokensOut || 0,
                     totalTokens: (currentVersion.generationParams as any)?.totalTokens || 0,
+                    multiplier: (currentVersion.generationParams as any)?.multiplier || 1.0,
+                    billedTokens: (currentVersion.generationParams as any)?.billedTokens || (currentVersion.generationParams as any)?.totalTokens || 0,
                 }
             } : null,
         });

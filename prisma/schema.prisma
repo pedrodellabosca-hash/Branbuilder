@@ -684,6 +684,10 @@ model Usage {
   inputTokens     Int
   outputTokens    Int
   totalTokens     Int
+
+  // Billing (Multipliers)
+  billedTokens    Int      @default(0) // The actual amount charged to quota (totalTokens * multiplier)
+  multiplier      Float    @default(1.0) // 1.0 (Fast), 2.0 (Balanced), 3.0 (Quality)
   
   // Cost tracking (for internal analytics, set by admin pricing)
   estimatedCostUsd Float?

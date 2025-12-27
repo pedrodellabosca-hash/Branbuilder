@@ -194,6 +194,12 @@ const DEFAULT_PRESETS: Record<PresetLevel, { provider: Provider; model: string }
     quality: { provider: "OPENAI", model: "gpt-4o" },
 };
 
+export const PRESET_MULTIPLIERS: Record<PresetLevel, number> = {
+    fast: 1.0,      // Baseline
+    balanced: 2.0,  // 2x cost
+    quality: 3.0,   // 3x cost
+};
+
 // =============================================================================
 // ALLOWLIST PARSING
 // =============================================================================

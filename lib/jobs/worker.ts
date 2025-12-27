@@ -93,19 +93,31 @@ async function processNextJob(): Promise<void> {
     console.log(`[Worker] Processing job ${job.id} (type=${job.type})`);
 
     try {
-        const result = await executeJob(job as JobRecord);
+        await executeJob(job as JobRecord);
 
-        // Mark as DONE
-        await prisma.job.update({
-            where: { id: job.id },
+        // Job is marked DONE by processStageJob usually, but we ensure lock release
+        // We check if status was updated; if not, we mark it DONE. 
+        // But processStageJob handles result writing. 
+        // To be safe and clean, we only update lockedAt/lockedBy here if job is still PROCESSING.
+
+        await prisma.job.updateMany({
+            where: { id: job.id, status: "PROCESSING" },
             data: {
-                status: "DONE",
-                result: result as object,
+                status: "DONE", // Fallback if runner didn't update it
                 progress: 100,
                 completedAt: new Date(),
                 lockedAt: null,
                 lockedBy: null,
             },
+        });
+
+        // Always release lock if it wasn't caught above (e.g. status IS DONE)
+        await prisma.job.updateMany({
+            where: { id: job.id, lockedBy: WORKER_ID },
+            data: {
+                lockedAt: null,
+                lockedBy: null
+            }
         });
 
         console.log(`[Worker] Job ${job.id} completed successfully`);
@@ -137,21 +149,23 @@ async function processNextJob(): Promise<void> {
 /**
  * Execute job based on type
  */
-async function executeJob(job: JobRecord): Promise<object> {
+async function executeJob(job: JobRecord): Promise<void> {
     switch (job.type) {
         case "GENERATE_OUTPUT":
         case "REGENERATE_OUTPUT":
             return await processGenerateOutput(job);
 
         case "PROCESS_LIBRARY_FILE":
-            return { success: true, message: "File processed (mock)" };
+            console.log("Mock processing file...");
+            return;
 
         case "BUILD_BRAND_PACK":
         case "BUILD_STRATEGY_PACK":
         case "BUILD_BRAND_MANUAL":
         case "BATCH_LOGOS":
         case "BATCH_MOCKUPS":
-            return { success: true, message: `${job.type} completed (mock)` };
+            console.log(`Mock processing ${job.type}...`);
+            return;
 
         default:
             throw new Error(`Unknown job type: ${job.type}`);
@@ -160,106 +174,47 @@ async function executeJob(job: JobRecord): Promise<object> {
 
 /**
  * Process GENERATE_OUTPUT / REGENERATE_OUTPUT
+ * Now delegates to the shared stage runner logic.
  */
-async function processGenerateOutput(job: JobRecord): Promise<object> {
-    const payload = job.payload as { stageId?: string };
-    const stageId = payload.stageId;
+async function processGenerateOutput(job: JobRecord): Promise<void> {
+    const payload = job.payload as any;
 
-    if (!stageId) {
-        throw new Error("Missing stageId in payload");
-    }
-
-    if (!job.projectId) {
-        throw new Error("Missing projectId on job");
-    }
-
-    // Find stage
-    const stage = await prisma.stage.findFirst({
-        where: {
-            id: stageId,
-            projectId: job.projectId,
-        },
-    });
-
-    if (!stage) {
-        throw new Error(`Stage ${stageId} not found for project ${job.projectId}`);
-    }
-
-    const isRegenerate = job.type === "REGENERATE_OUTPUT";
-
-    // Find or create output
-    let output = await prisma.output.findFirst({
-        where: {
-            stageId,
-            projectId: job.projectId,
-        },
-        include: {
-            versions: {
-                orderBy: { version: "desc" },
-                take: 1,
-            },
-        },
-    });
-
-    if (!output) {
-        // Create new output with first version
-        output = await prisma.output.create({
-            data: {
-                projectId: job.projectId,
-                stageId: stage.id,
-                outputKey: `${stage.stageKey}_output_1`,
-                name: `Output de ${stage.name}`,
-                versions: {
-                    create: {
-                        version: 1,
-                        content: {
-                            title: stage.name,
-                            generated: true,
-                            generatedAt: new Date().toISOString(),
-                            content: `Contenido ${isRegenerate ? 're' : ''}generado para ${stage.stageKey}. (Integrar IA aquí)`,
-                        },
-                        createdBy: "worker",
-                        type: "GENERATED",
-                        status: "GENERATED",
-                    },
-                },
-            },
-            include: { versions: true },
-        });
-    } else if (isRegenerate) {
-        const latestVersion = output.versions[0]?.version || 0;
-        await prisma.outputVersion.create({
-            data: {
-                outputId: output.id,
-                version: latestVersion + 1,
-                content: {
-                    title: stage.name,
-                    regenerated: true,
-                    generatedAt: new Date().toISOString(),
-                    content: `Contenido regenerado (v${latestVersion + 1}) para ${stage.stageKey}. (Integrar IA aquí)`,
-                },
-                createdBy: "worker",
-                type: "GENERATED",
-                status: "GENERATED",
-            },
-        });
-    }
-
-    // Update stage status
-    const newStatus = isRegenerate ? "REGENERATED" : "GENERATED";
-    await prisma.stage.update({
-        where: { id: stageId },
-        data: { status: newStatus },
-    });
-
-    console.log(`[Worker] Output created for stage ${stageId}, status=${newStatus}`);
-
-    return {
-        success: true,
-        outputId: output.id,
+    // Extract required params from payload
+    const {
         stageId,
-        status: newStatus,
-    };
+        outputId,
+        stageKey,
+        projectName,
+        userId,
+    } = payload;
+
+    if (!stageId || !outputId || !stageKey || !projectName || !userId) {
+        throw new Error(`Invalid payload for job ${job.id}: missing required fields`);
+    }
+
+    // Reconstruct effective config from job runConfig (Source of Truth)
+    // We cast it because Prisma Json type assumes basic JSON, 
+    // but we know it matches EffectiveConfig structure.
+    const runConfig = (job as any).runConfig;
+
+    if (!runConfig) {
+        throw new Error(`Missing runConfig for job ${job.id}`);
+    }
+
+    // Import lazily to avoid circular dep issues if any (though unlikely here)
+    const { processStageJob } = await import("@/lib/stages/runStage");
+
+    // Delegate execution
+    await processStageJob(
+        job.id,
+        stageId,
+        outputId,
+        stageKey,
+        projectName,
+        job.type === "REGENERATE_OUTPUT",
+        userId,
+        runConfig as any // EffectiveConfig
+    );
 }
 
 // Utilities

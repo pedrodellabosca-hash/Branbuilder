@@ -40,6 +40,9 @@ export interface UsageSummary {
     daysUntilReset: number;
     plan: Plan;
     canPurchaseMore: boolean;
+    // New billing stats
+    rawUsed: number;
+    billedUsed: number;
 }
 
 export interface RecordUsageParams {
@@ -51,6 +54,7 @@ export interface RecordUsageParams {
     model: string;
     inputTokens: number;
     outputTokens: number;
+    multiplier?: number;
 }
 
 // Default limits by plan (used if PlanConfig not set in DB)
@@ -146,8 +150,11 @@ export async function checkTokenBudget(
  * Uses transaction to prevent race conditions
  */
 export async function recordUsage(params: RecordUsageParams): Promise<void> {
-    const { orgId, projectId, stageKey, jobId, provider, model, inputTokens, outputTokens } = params;
+    const { orgId, projectId, stageKey, jobId, provider, model, inputTokens, outputTokens, multiplier = 1.0 } = params;
     const totalTokens = inputTokens + outputTokens;
+    const billedTokens = // Turbo/Balanced = 1x?, Quality = 3x? 
+        // No, we receive multiplier.
+        Math.ceil(totalTokens * multiplier);
 
     await prisma.$transaction(async (tx) => {
         // 1. Lock/Get Organization current state
@@ -168,10 +175,10 @@ export async function recordUsage(params: RecordUsageParams): Promise<void> {
         const monthlyAvailable = Math.max(0, org.monthlyTokenLimit - org.monthlyTokensUsed);
 
         // Consume from monthly quota first
-        const monthlyConsumption = Math.min(totalTokens, monthlyAvailable);
+        const monthlyConsumption = Math.min(billedTokens, monthlyAvailable);
 
         // Consume remainder from bonus
-        const bonusConsumption = Math.max(0, totalTokens - monthlyConsumption);
+        const bonusConsumption = Math.max(0, billedTokens - monthlyConsumption);
 
         // 3. Atomic update
         await tx.organization.update({
@@ -198,11 +205,13 @@ export async function recordUsage(params: RecordUsageParams): Promise<void> {
                 inputTokens,
                 outputTokens,
                 totalTokens,
-            },
+                billedTokens,
+                multiplier,
+            } as any,
         });
 
         console.log(
-            `[Usage] Recorded ${totalTokens} tokens for org ${orgId} (Monthly: ${monthlyConsumption}, Bonus: ${bonusConsumption})`
+            `[Usage] Recorded usage for org ${orgId}: ${totalTokens} raw tokens * ${multiplier}x = ${billedTokens} billed (Monthly: ${monthlyConsumption}, Bonus: ${bonusConsumption})`
         );
     });
 }
@@ -213,6 +222,20 @@ export async function recordUsage(params: RecordUsageParams): Promise<void> {
 export async function getUsageSummary(orgId: string): Promise<UsageSummary> {
     // Check for reset first
     await resetMonthlyUsageIfNeeded(orgId);
+
+    // Get aggregated stats for current cycle
+    const currentUsage = await prisma.usage.aggregate({
+        where: {
+            orgId,
+            createdAt: {
+                gte: new Date(new Date().setDate(new Date().getDate() - 30)) // Rough 30 days window, ideally use resetDate
+            }
+        },
+        _sum: {
+            totalTokens: true,
+            billedTokens: true,
+        } as any
+    });
 
     const org = await prisma.organization.findUnique({
         where: { id: orgId },
@@ -255,6 +278,9 @@ export async function getUsageSummary(orgId: string): Promise<UsageSummary> {
         daysUntilReset,
         plan: org.plan,
         canPurchaseMore: PURCHASABLE_PLANS.includes(org.plan),
+        // Safe access (casts to any because Prisma types are stale in IDE)
+        rawUsed: (currentUsage._sum as any)?.totalTokens || 0,
+        billedUsed: (currentUsage._sum as any)?.billedTokens || 0,
     };
 }
 
