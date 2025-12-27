@@ -217,6 +217,7 @@ export function StageActions({
 
                 if (data.status === "DONE") {
                     console.log("[StageActions] Job DONE", data.result);
+                    setJobStatus("DONE");
                     router.refresh();
 
                     // Clear param clean
@@ -228,6 +229,7 @@ export function StageActions({
                 }
 
                 if (data.status === "FAILED") {
+                    setJobStatus("FAILED");
                     setError(data.error || "El job falló durante el procesamiento");
                     const url = new URL(window.location.href);
                     url.searchParams.delete("jobId");
