@@ -165,10 +165,10 @@ export async function POST(request: NextRequest) {
 
             if (moduleVenture) {
                 stages.push(
-                    { displayKey: "V1", stageKey: "venture_intake", name: "Intake de Idea", module: "V" as any, order: currentOrder++ },
-                    { displayKey: "V2", stageKey: "venture_idea_validation", name: "Validación de Idea", module: "V" as any, order: currentOrder++ },
-                    { displayKey: "V3", stageKey: "venture_buyer_persona", name: "Buyer Persona (V)", module: "V" as any, order: currentOrder++ },
-                    { displayKey: "V4", stageKey: "venture_business_plan", name: "Plan de Negocio", module: "V" as any, order: currentOrder++ }
+                    { displayKey: "V1", stageKey: "venture_intake", name: "Intake de Idea", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "V2", stageKey: "venture_idea_validation", name: "Validacion de Idea", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "V3", stageKey: "venture_buyer_persona", name: "Buyer Persona (V)", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "V4", stageKey: "venture_business_plan", name: "Plan de Negocio", module: "A" as const, order: currentOrder++ }
                 );
             }
 

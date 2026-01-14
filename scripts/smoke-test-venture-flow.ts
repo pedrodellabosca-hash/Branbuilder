@@ -1,8 +1,8 @@
 import dotenv from "dotenv";
 import path from "path";
-import { prisma } from "@/lib/db";
-import { enqueueStageJob, processStageJob } from "@/lib/stages/runStage";
-import { STAGE_DEPENDENCIES } from "@/lib/stages/gating";
+import { prisma } from "../lib/db";
+import { enqueueStageJob, processStageJob } from "../lib/stages/runStage";
+import { STAGE_DEPENDENCIES } from "../lib/stages/gating";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
