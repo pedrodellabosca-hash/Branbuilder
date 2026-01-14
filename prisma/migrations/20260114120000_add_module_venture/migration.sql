@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "Project" ADD COLUMN     "moduleVenture" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS    "moduleVenture" BOOLEAN NOT NULL DEFAULT false;
