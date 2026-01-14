@@ -10,6 +10,8 @@
     "type-check": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:sync": "npx prisma migrate deploy && npx prisma db seed",
+    "db:status": "npx prisma migrate status",
     "db:bootstrap": "./scripts/db-bootstrap.sh",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
@@ -29,9 +31,11 @@
     "verify:models": "./scripts/verify-models.sh",
     "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
     "verify:env": "npx tsx scripts/verify-env.ts",
+    "verify:db": "npx tsx scripts/verify-db.ts",
     "env:bootstrap": "npx tsx scripts/bootstrap-env.ts",
     "predev": "npm run env:bootstrap",
     "preworker:start": "npm run env:bootstrap",
+    "healthcheck:local": "npx tsx scripts/healthcheck-local.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

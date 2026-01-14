@@ -37,11 +37,13 @@ nano .env
 docker-compose up -d
 ```
 
-### 4. Ejecutar migraciones
+### 4. Ejecutar migraciones (dev)
 
 ```bash
-npm run db:migrate
+npm run db:sync
 ```
+
+> Nota: En este repo `prisma migrate dev` puede fallar por el shadow DB. Para desarrollo local usa `npm run db:sync`. Si necesitas crear nuevas migraciones, usa `prisma migrate dev` en un entorno limpio o ajusta el shadow DB según el equipo.
 
 ### 5. Iniciar el servidor de desarrollo
 
@@ -65,11 +67,14 @@ La aplicación estará disponible en [http://localhost:3000](http://localhost:30
 | `npm run lint` | Ejecuta ESLint |
 | `npm run type-check` | Verifica tipos TypeScript |
 | `npm run db:migrate` | Ejecuta migraciones de Prisma |
+| `npm run db:sync` | Aplica migraciones y ejecuta seed |
+| `npm run db:status` | Muestra estado de migraciones |
 | `npm run db:push` | Aplica el schema sin migraciones |
 | `npm run db:studio` | Abre Prisma Studio (GUI) |
 | `npm run db:seed` | Ejecuta seeds de datos |
 | `npm run db:reset` | Resetea la base de datos |
 | `npm run worker:start` | Inicia el worker de background |
+| `npm run healthcheck:local` | Verifica DB, migraciones y Venture v1 |
 
 ---
 
