@@ -51,10 +51,16 @@ DROP INDEX IF EXISTS "WorkflowSet_key_scope_idx";
 DROP INDEX IF EXISTS "WorkflowSet_orgId_idx";
 
 -- AlterTable
-ALTER TABLE "OrganizationAIConfig" ADD COLUMN     "stageConfigs" JSONB;
+ALTER TABLE IF EXISTS "OrganizationAIConfig" ADD COLUMN IF NOT EXISTS "stageConfigs" JSONB;
 
 -- AlterTable
 ALTER TABLE "Project" ADD COLUMN     "moduleVenture" BOOLEAN NOT NULL DEFAULT false;
+
+-- AlterTable
+ALTER TABLE IF EXISTS "Usage"
+    ADD COLUMN IF NOT EXISTS "billedTokens" INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "multiplier" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    ADD COLUMN IF NOT EXISTS "estimatedCostUsd" DOUBLE PRECISION;
 
 -- AlterTable (guarded)
 DO $$
@@ -202,14 +208,47 @@ CREATE UNIQUE INDEX "StageModelRecommendation_orgId_stageKey_key" ON "StageModel
 -- CreateIndex
 CREATE INDEX "PromptSet_stageKey_roleKey_idx" ON "PromptSet"("stageKey", "roleKey");
 
--- CreateIndex
-CREATE INDEX "WorkflowSet_orgId_projectId_idx" ON "WorkflowSet"("orgId", "projectId");
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'WorkflowSet'
+          AND column_name = 'orgId'
+    ) AND EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'WorkflowSet'
+          AND column_name = 'projectId'
+    ) THEN
+        EXECUTE 'CREATE INDEX "WorkflowSet_orgId_projectId_idx" ON "WorkflowSet"("orgId", "projectId")';
+    END IF;
+END $$;
 
 -- CreateIndex
 CREATE INDEX "WorkflowSet_isActive_idx" ON "WorkflowSet"("isActive");
 
--- CreateIndex
-CREATE UNIQUE INDEX "WorkflowSet_orgId_projectId_version_key" ON "WorkflowSet"("orgId", "projectId", "version");
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'WorkflowSet'
+          AND column_name = 'orgId'
+    ) AND EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'WorkflowSet'
+          AND column_name = 'projectId'
+    ) AND EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'WorkflowSet'
+          AND column_name = 'version'
+    ) THEN
+        EXECUTE 'CREATE UNIQUE INDEX "WorkflowSet_orgId_projectId_version_key" ON "WorkflowSet"("orgId", "projectId", "version")';
+    END IF;
+END $$;
 
 -- AddForeignKey
 ALTER TABLE "StageModelRecommendation" ADD CONSTRAINT "StageModelRecommendation_recommendedModelId_fkey" FOREIGN KEY ("recommendedModelId") REFERENCES "ModelCatalog"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
