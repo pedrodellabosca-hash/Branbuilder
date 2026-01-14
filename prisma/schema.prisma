@@ -237,6 +237,7 @@ model Project {
   // Modules enabled
   moduleA     Boolean       @default(false) // Brand Creation
   moduleB     Boolean       @default(false) // Brand Strategy
+  moduleVenture Boolean     @default(false) // Venture Pipeline
   
   // Cloning/Branching
   parentId    String?
@@ -723,4 +724,3 @@ model PlanConfig {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
-
