@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import { prisma } from "../lib/db";
-import { enqueueStageJob, processStageJob } from "../lib/stages/runStage";
+import { runStage } from "../lib/stages/runStage";
 import { STAGE_DEPENDENCIES } from "../lib/stages/gating";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -106,35 +106,21 @@ async function main() {
         skipDuplicates: true,
     });
 
-    const enqueueResult = await enqueueStageJob({
+    const runResult = await runStage({
         projectId: project.id,
         stageKey: "venture_intake",
         userId: TEST_USER_ID,
         orgId: TEST_ORG_ID,
+        provider: "MOCK",
+        preset: "fast",
     });
 
-    if (!enqueueResult.success || !enqueueResult.stageId || !enqueueResult.outputId) {
-        throw new Error(`Enqueue failed: ${enqueueResult.error}`);
+    if (!runResult.success || !runResult.stageId || !runResult.outputId) {
+        throw new Error(`Run failed: ${runResult.error}`);
     }
 
-    const job = await prisma.job.findUnique({ where: { id: enqueueResult.jobId } });
-    if (!job) throw new Error("Job not found in DB");
-
-    const effectiveConfig = job.runConfig as any;
-
-    await processStageJob(
-        job.id,
-        enqueueResult.stageId,
-        enqueueResult.outputId,
-        "venture_intake",
-        project.name,
-        false,
-        TEST_USER_ID,
-        effectiveConfig
-    );
-
     const output = await prisma.output.findUnique({
-        where: { id: enqueueResult.outputId },
+        where: { id: runResult.outputId },
         include: { versions: { orderBy: { version: "desc" }, take: 1 } },
     });
 
@@ -148,7 +134,7 @@ async function main() {
         });
 
         await tx.stage.update({
-            where: { id: enqueueResult.stageId },
+            where: { id: runResult.stageId },
             data: { status: "APPROVED" },
         });
 
