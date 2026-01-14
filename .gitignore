@@ -23,6 +23,13 @@
 # misc
 .DS_Store
 *.pem
+**/*.docx
+**/*.pdf
+**/*.docx.meta.json
+**/*.pdf.meta.json
+storage/
+public/uploads/
+public/exports/
 
 # debug
 npm-debug.log*
