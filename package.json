@@ -10,6 +10,8 @@
     "type-check": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:sync": "npx prisma migrate deploy && npx prisma db seed",
+    "db:status": "npx prisma migrate status",
     "db:bootstrap": "./scripts/db-bootstrap.sh",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
@@ -48,6 +50,7 @@
     "verify:ai:providers": "npx tsx scripts/verify-ai-providers.ts",
     "verify:collaboration": "npx tsx scripts/verify-collaboration.ts",
     "verify:billing": "npx tsx scripts/verify-billing.ts",
+    "healthcheck:local": "npx tsx scripts/healthcheck-local.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
