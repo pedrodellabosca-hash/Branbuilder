@@ -139,6 +139,19 @@ export function StageActions({
 
         console.debug("[StageActions] Enqueueing stage:", { projectId, stageKey });
 
+        const formatRunError = (message: string) => {
+            if (message.includes("PROVIDER_NOT_CONFIGURED") || message.includes("AI Provider not configured")) {
+                return "Proveedor de IA no configurado. Agrega API keys o activa AI_MOCK_MODE=1.";
+            }
+            if (message.includes("STAGE_LOCKED")) {
+                return "La etapa esta bloqueada por otro usuario. Intenta mas tarde.";
+            }
+            if (message.includes("MISSING_DEPENDENCY")) {
+                return `Faltan dependencias para ejecutar la etapa. ${message}`;
+            }
+            return message;
+        };
+
         try {
             const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/run`, {
                 method: "POST",
@@ -147,14 +160,15 @@ export function StageActions({
             });
 
             if (!response.ok) {
-                const data = await response.json();
+                const data = await response.json().catch(() => ({}));
                 if (response.status === 402) {
                     setError(<TokenLimitBanner error={data} onPurchaseAddon={buyAddon} />);
                     setIsLoading(false);
                     return;
                 }
                 if (response.status === 401) throw new Error("Authentication required");
-                throw new Error(data.error || "Error ejecutando etapa");
+                const errorMessage = data.error || "Error ejecutando etapa";
+                throw new Error(formatRunError(errorMessage));
             }
 
             const data = await response.json();
@@ -305,7 +319,7 @@ export function StageActions({
 
             attempts++;
             if (attempts >= maxAttempts) {
-                setError("El proceso está tardando más de lo esperado. Puedes recargar la página.");
+                setError("El proceso está tardando más de lo esperado. Verifica que el worker esté corriendo.");
                 setIsLoading(false);
                 // Don't clear LocalStorage so user can refresh and try poll again if they want, 
                 // or maybe we should to avoid infinite loop. Let's clear loading state but keep ID.
