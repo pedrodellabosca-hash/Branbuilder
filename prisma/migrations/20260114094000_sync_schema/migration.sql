@@ -10,29 +10,45 @@ CREATE TYPE "ModelChangeType" AS ENUM ('NEW_MODEL', 'DEPRECATED', 'REMOVED', 'ME
 -- AlterEnum
 ALTER TYPE "Module" ADD VALUE 'V';
 
--- DropForeignKey
-ALTER TABLE "WorkflowSetVersion" DROP CONSTRAINT "WorkflowSetVersion_workflowSetId_fkey";
+-- DropForeignKey (guarded)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'WorkflowSetVersion'
+    ) THEN
+        IF EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'WorkflowSetVersion_workflowSetId_fkey'
+        ) THEN
+            ALTER TABLE "WorkflowSetVersion" DROP CONSTRAINT "WorkflowSetVersion_workflowSetId_fkey";
+        END IF;
+    END IF;
+END $$;
 
 -- DropIndex
-DROP INDEX "PromptSet_key_scope_idx";
+DROP INDEX IF EXISTS "PromptSet_key_scope_idx";
 
 -- DropIndex
-DROP INDEX "PromptSet_orgId_idx";
+DROP INDEX IF EXISTS "PromptSet_orgId_idx";
 
 -- DropIndex
-DROP INDEX "PromptSetVersion_checksum_idx";
+DROP INDEX IF EXISTS "PromptSetVersion_checksum_idx";
 
 -- DropIndex
-DROP INDEX "PromptSetVersion_status_idx";
+DROP INDEX IF EXISTS "PromptSetVersion_status_idx";
 
 -- DropIndex
-DROP INDEX "WorkflowSet_key_key";
+DROP INDEX IF EXISTS "WorkflowSet_key_key";
 
 -- DropIndex
-DROP INDEX "WorkflowSet_key_scope_idx";
+DROP INDEX IF EXISTS "WorkflowSet_key_scope_idx";
 
 -- DropIndex
-DROP INDEX "WorkflowSet_orgId_idx";
+DROP INDEX IF EXISTS "WorkflowSet_orgId_idx";
 
 -- AlterTable
 ALTER TABLE "OrganizationAIConfig" ADD COLUMN     "stageConfigs" JSONB;
@@ -40,44 +56,75 @@ ALTER TABLE "OrganizationAIConfig" ADD COLUMN     "stageConfigs" JSONB;
 -- AlterTable
 ALTER TABLE "Project" ADD COLUMN     "moduleVenture" BOOLEAN NOT NULL DEFAULT false;
 
--- AlterTable
-ALTER TABLE "ProjectAIConfig" ADD COLUMN     "stageConfigs" JSONB;
+-- AlterTable (guarded)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'ProjectAIConfig'
+    ) THEN
+        ALTER TABLE "ProjectAIConfig" ADD COLUMN     "stageConfigs" JSONB;
+    END IF;
+END $$;
 
 -- AlterTable
-ALTER TABLE "PromptSet" DROP COLUMN "scope",
-ADD COLUMN     "module" "Module",
-ADD COLUMN     "name" TEXT,
-ADD COLUMN     "projectId" TEXT,
-ADD COLUMN     "roleKey" TEXT NOT NULL,
-ADD COLUMN     "stageKey" TEXT;
+ALTER TABLE "PromptSet" DROP COLUMN IF EXISTS "scope",
+ADD COLUMN IF NOT EXISTS    "module" "Module",
+ADD COLUMN IF NOT EXISTS    "name" TEXT,
+ADD COLUMN IF NOT EXISTS    "projectId" TEXT,
+ADD COLUMN IF NOT EXISTS    "roleKey" TEXT NOT NULL,
+ADD COLUMN IF NOT EXISTS    "stageKey" TEXT;
 
 -- AlterTable
-ALTER TABLE "PromptSetVersion" DROP COLUMN "checksum",
-DROP COLUMN "createdByUserId",
-DROP COLUMN "outputSchema",
-DROP COLUMN "publishedAt",
-DROP COLUMN "revokedAt",
-DROP COLUMN "revokedByUserId",
-DROP COLUMN "systemPrompt",
-DROP COLUMN "userPromptTemplate",
-DROP COLUMN "variablesSchema",
-ADD COLUMN     "content" TEXT NOT NULL,
-ADD COLUMN     "createdBy" TEXT NOT NULL;
+ALTER TABLE IF EXISTS "PromptSetVersion" DROP COLUMN IF EXISTS "checksum",
+DROP COLUMN IF EXISTS "createdByUserId",
+DROP COLUMN IF EXISTS "outputSchema",
+DROP COLUMN IF EXISTS "publishedAt",
+DROP COLUMN IF EXISTS "revokedAt",
+DROP COLUMN IF EXISTS "revokedByUserId",
+DROP COLUMN IF EXISTS "systemPrompt",
+DROP COLUMN IF EXISTS "userPromptTemplate",
+DROP COLUMN IF EXISTS "variablesSchema",
+ADD COLUMN IF NOT EXISTS    "content" TEXT NOT NULL,
+ADD COLUMN IF NOT EXISTS    "createdBy" TEXT NOT NULL;
 
--- AlterTable
-ALTER TABLE "WorkflowSet" DROP COLUMN "description",
-DROP COLUMN "key",
-DROP COLUMN "scope",
-ADD COLUMN     "createdBy" TEXT NOT NULL,
-ADD COLUMN     "isActive" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "jsonDefinition" JSONB NOT NULL,
-ADD COLUMN     "projectId" TEXT,
-ADD COLUMN     "status" "RegistryStatus" NOT NULL DEFAULT 'DRAFT',
-ADD COLUMN     "systemDefinition" TEXT,
-ADD COLUMN     "version" INTEGER NOT NULL DEFAULT 1;
+-- AlterTable (guarded)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'WorkflowSet'
+    ) THEN
+        ALTER TABLE "WorkflowSet"
+            DROP COLUMN IF EXISTS "description",
+            DROP COLUMN IF EXISTS "key",
+            DROP COLUMN IF EXISTS "scope";
+
+        ALTER TABLE "WorkflowSet"
+            ADD COLUMN IF NOT EXISTS "createdBy" TEXT NOT NULL,
+            ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "jsonDefinition" JSONB NOT NULL,
+            ADD COLUMN IF NOT EXISTS "projectId" TEXT,
+            ADD COLUMN IF NOT EXISTS "systemDefinition" TEXT,
+            ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1;
+
+        IF EXISTS (
+            SELECT 1
+            FROM pg_type
+            WHERE typname = 'RegistryStatus'
+        ) THEN
+            ALTER TABLE "WorkflowSet"
+                ADD COLUMN IF NOT EXISTS "status" "RegistryStatus" NOT NULL DEFAULT 'DRAFT';
+        END IF;
+    END IF;
+END $$;
 
 -- DropTable
-DROP TABLE "WorkflowSetVersion";
+DROP TABLE IF EXISTS "WorkflowSetVersion";
 
 -- CreateTable
 CREATE TABLE "SystemStaff" (
