@@ -17,6 +17,14 @@ export async function POST(
         }
 
         const { id: projectId, stageKey } = await params;
+        const body = await request.json();
+        const { versionId } = body;
+
+        // Guard removed: Generalized for all stages
+
+        if (!versionId) {
+            return NextResponse.json({ error: "Missing versionId" }, { status: 400 });
+        }
 
         // Verify project/org access
         const project = await prisma.project.findFirst({
@@ -36,25 +44,46 @@ export async function POST(
             return NextResponse.json({ error: "Stage not found" }, { status: 404 });
         }
 
-        // Update Stage Status
-        await prisma.stage.update({
-            where: { id: stage.id },
-            data: { status: "APPROVED" },
-        });
-
-        // Find latest output version and mark it APPROVED too if needed
-        // (Optional based on business logic, but good for tracking which version was approved)
+        // Find output to verify version belongs to it
         const output = await prisma.output.findFirst({
-            where: { stageId: stage.id },
-            include: { versions: { orderBy: { version: "desc" }, take: 1 } },
+            where: { stageId: stage.id }
         });
 
-        if (output && output.versions[0]) {
-            await prisma.outputVersion.update({
-                where: { id: output.versions[0].id },
+        if (!output) {
+            return NextResponse.json({ error: "Output not found" }, { status: 404 });
+        }
+
+        // Execute changes transactionally
+        await prisma.$transaction(async (tx) => {
+            // 1. Approve target version
+            const updated = await tx.outputVersion.update({
+                where: { id: versionId },
+                data: {
+                    status: "APPROVED",
+                    // We could store approvedBy here if schema allows, assumed existing flow does basic status 
+                }
+            });
+
+            if (updated.outputId !== output.id) {
+                throw new Error("Version does not belong to this stage");
+            }
+
+            // 2. Mark other APPROVED versions as OBSOLETE
+            await tx.outputVersion.updateMany({
+                where: {
+                    outputId: output.id,
+                    status: "APPROVED",
+                    id: { not: versionId }
+                },
+                data: { status: "OBSOLETE" }
+            });
+
+            // 3. Update Stage Status
+            await tx.stage.update({
+                where: { id: stage.id },
                 data: { status: "APPROVED" },
             });
-        }
+        });
 
         return NextResponse.json({ success: true });
 

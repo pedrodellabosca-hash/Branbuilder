@@ -75,6 +75,7 @@ enum JobStatus {
   PROCESSING
   DONE
   FAILED
+  CANCELED
 }
 
 enum StageStatus {
@@ -143,12 +144,14 @@ enum AuditAction {
   SUBSCRIPTION_UPDATED
   SUBSCRIPTION_CANCELED
   ADDON_PURCHASED
+  ADDON_INTENT_CREATED // New
   PAYMENT_FAILED
   // Security
   API_KEY_CREATED
   API_KEY_ROTATED
   API_KEY_REVOKED
   SSO_CONFIGURED
+  ORG_SWITCHED
 }
 
 // =============================================================================
@@ -190,14 +193,70 @@ model Organization {
   
   // Relations
   members             OrgMember[]
+  invitations         Invitation[]
   projects            Project[]
   apiKeys             ApiKey[]
   auditLogs           AuditLog[]
   usageRecords        Usage[]
   jobs                Job[]
+  tokenPurchases      TokenPurchase[]
   
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
+
+  // AI Config
+  aiConfig            OrganizationAIConfig?
+  
+  // SSO Config
+  ssoConfig           OrganizationSSOConfig?
+}
+
+model OrganizationSSOConfig {
+  id          String   @id @default(cuid())
+  orgId       String   @unique
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  entryPoint  String   // IDP Login URL
+  issuer      String   // IDP Entity ID
+  cert        String   // IDP Public Cert
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OrganizationAIConfig {
+  id              String       @id @default(cuid())
+  orgId           String       @unique
+  org             Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  provider        String       @default("MOCK") // OPENAI, ANTHROPIC, MOCK
+  model           String       @default("gpt-4o-mini")
+  preset          String       @default("fast") // fast, balanced
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+// Invitation
+model Invitation {
+  id          String   @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  email       String
+  role        OrgRole  @default(MEMBER)
+  tokenHash   String   @unique
+  
+  invitedBy   String   // userId
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([orgId])
+  @@index([email])
+  @@index([tokenHash])
 }
 
 model OrgMember {
@@ -311,6 +370,7 @@ model Stage {
   stageKey    String      // Technical ID: naming, manifesto, etc.
   displayKey  String?     // Human ID: A1, A2, B1, etc.
   name        String
+  orgId       String?
   description String?
   order       Int
   status      StageStatus @default(NOT_STARTED)
@@ -346,6 +406,7 @@ model Output {
   stage       Stage        @relation(fields: [stageId], references: [id], onDelete: Cascade)
   
   name        String
+  orgId       String?
   outputKey   String       // naming, manifesto, logo_primary, etc.
   
   // Relations
@@ -571,12 +632,14 @@ model ApiKey {
 model PromptSet {
   id          String    @id @default(cuid())
   name        String
+  orgId       String?
   module      Module
   stage       String
   version     String
   isActive    Boolean   @default(false)
   
   prompts     Json      // Array of prompt configurations
+  notes       String?   // Context for this version
   
   createdBy   String    // userId
   activatedBy String?
@@ -592,6 +655,7 @@ model PromptSet {
 model WorkflowSet {
   id          String    @id @default(cuid())
   name        String
+  orgId       String?
   module      Module
   version     String
   isActive    Boolean   @default(false)
@@ -662,6 +726,28 @@ model UsageRecord {
   @@index([orgId, type])
 }
 
+model TokenPurchase {
+  id              String   @id @default(cuid())
+  orgId           String
+  org             Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  status          String   // PENDING, COMPLETED, CANCELED
+  tokens          Int
+  priceUsdCents   Int      // Price at time of intent
+  idempotencyKey  String   @unique
+  
+  // Metadata
+  createdBy       String   // userId
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+  
+  metadata        Json?
+
+  @@index([orgId, status])
+  @@index([idempotencyKey])
+}
+
 // =============================================================================
 // AI TOKEN USAGE TRACKING
 // =============================================================================
@@ -722,5 +808,41 @@ model PlanConfig {
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+
+// =============================================================================
+// SYSTEM MONITORING
+// =============================================================================
+
+model WorkerHeartbeat {
+  id          String   @id @default(cuid())
+  workerId    String   @unique
+  startedAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  version     String?
+}
+
+// =============================================================================
+// MFA & SECURITY
+// =============================================================================
+
+model UserMfaSecret {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  encryptedSecret     String
+  isEnabled           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model UserBackupCode {
+  id          String   @id @default(cuid())
+  userId      String
+  codeHash    String   // Hashed for security
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
 }
 

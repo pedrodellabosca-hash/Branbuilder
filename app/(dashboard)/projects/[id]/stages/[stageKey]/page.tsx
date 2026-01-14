@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Palette, LineChart, AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { StageActions } from "@/components/project/StageActions";
+import { StageOutputPanel } from "@/components/project/StageOutputPanel";
 import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 
 // Force dynamic rendering
@@ -206,61 +207,11 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                 />
             </div>
 
-            {/* Outputs */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl">
-                <div className="px-6 py-4 border-b border-slate-800">
-                    <h2 className="text-lg font-semibold text-white">
-                        Outputs ({stage.outputs.length})
-                    </h2>
-                </div>
-                {stage.outputs.length === 0 ? (
-                    <div className="p-6 text-center">
-                        <p className="text-slate-400">
-                            No hay outputs generados aún. Haz clic en &quot;Generar&quot; para crear el contenido de esta etapa.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="divide-y divide-slate-800">
-                        {stage.outputs.map((output) => {
-                            const latestVersion = output.versions[0];
-                            return (
-                                <div
-                                    key={output.id}
-                                    className="px-6 py-4 hover:bg-slate-800/50 transition-colors"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="font-medium text-white">{output.name}</p>
-                                            <p className="text-sm text-slate-400">
-                                                {output.outputKey}
-                                                {latestVersion && ` • v${latestVersion.version}`}
-                                            </p>
-
-                                            {/* Fallback Warning */}
-                                            {latestVersion && latestVersion.generationParams && (latestVersion.generationParams as any).fallbackWarning && (
-                                                <div className="flex items-center gap-1.5 mt-1 text-xs text-yellow-500">
-                                                    <AlertTriangle className="w-3 h-3" />
-                                                    <span>{(latestVersion.generationParams as any).fallbackWarning}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {latestVersion && (
-                                            <span
-                                                className={`text-xs px-2 py-1 rounded ${latestVersion.status === "APPROVED"
-                                                    ? "bg-green-500/10 text-green-400"
-                                                    : "bg-slate-500/10 text-slate-400"
-                                                    }`}
-                                            >
-                                                {latestVersion.status}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
+            {/* Output Panel (Generic) */}
+            <StageOutputPanel
+                projectId={projectId}
+                stageKey={stage.stageKey}
+            />
         </div>
     );
 }

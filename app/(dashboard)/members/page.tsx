@@ -1,20 +1,45 @@
-import { Users } from "lucide-react";
 
-export default function MembersPage() {
+import { requireOrg } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+export default async function MembersPage() {
+    const { org } = await requireOrg();
+
+    // Fetch members with role
+    const members = await prisma.orgMember.findMany({
+        where: { orgId: org.id },
+        orderBy: { role: 'asc' }, // OWNER first usually, but enum order might vary
+    });
+
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-6">
-                <Users className="w-8 h-8 text-slate-400" />
+        <div className="space-y-6 max-w-4xl mx-auto p-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold text-white">Miembros del Equipo</h1>
+                {/* TODO: Add Invite Button (Phase 4/5) */}
             </div>
-            <h2 className="text-xl font-semibold text-white mb-2">
-                Miembros
-            </h2>
-            <p className="text-slate-400 mb-6 max-w-sm">
-                Próximamente podrás invitar a tu equipo y gestionar roles y permisos.
-            </p>
-            <div className="px-4 py-2 bg-slate-800 rounded-lg text-sm text-slate-300">
-                🚀 En desarrollo
-            </div>
+
+            <Card className="bg-slate-900 border-slate-800 text-slate-100">
+                <CardHeader>
+                    <CardTitle>Usuarios Activos ({members.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        {members.map((member) => (
+                            <div key={member.id} className="flex justify-between items-center p-3 hover:bg-slate-800/50 rounded-lg transition-colors border border-transparent hover:border-slate-800">
+                                <div>
+                                    <div className="font-medium text-white">{member.email}</div>
+                                    <div className="text-xs text-slate-500">Unido el {member.createdAt.toLocaleDateString()}</div>
+                                </div>
+                                <Badge variant="outline" className="uppercase text-xs min-w-[80px] justify-center">
+                                    {member.role}
+                                </Badge>
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

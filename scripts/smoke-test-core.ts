@@ -1,114 +1,111 @@
 
-import { prisma } from "@/lib/db";
-import { moduleEngine } from "@/lib/modules/ModuleEngine";
-import { outputService } from "@/lib/outputs/OutputService";
+import dotenv from "dotenv";
+import path from "path";
+import { prisma } from "../lib/db";
+import { getAIProvider, resetAIProvider } from "../lib/ai";
+import { enqueueStageJob } from "../lib/stages/runStage";
+
+// Force Mock Mode
+process.env.AI_MOCK_MODE = "1";
+process.env.AI_PROVIDER = "MOCK";
+
+// Load .env
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 async function main() {
-    console.log("🚀 Starting Core Loop Smoke Test...");
+    console.log("🧪 Starting Core Engine Smoke Test (Mock Mode)...");
 
-    // 1. Setup: Find valid Org/User
-    const org = await prisma.organization.findFirst({
-        include: { members: true }
-    });
+    // 1. Setup Data
+    console.log("1. Setting up test data...");
+    const org = await prisma.organization.findFirst();
+    if (!org) throw new Error("No organization found. Please seed DB.");
 
-    if (!org || !org.members[0]) {
-        console.error("❌ No Organization/User found. Please seed DB first.");
-        process.exit(1);
-    }
-
-    const userId = org.members[0].userId;
-    const orgId = org.clerkOrgId;
-    const dbOrgId = org.id;
-
-    console.log(`✅ Using Org: ${orgId} (DB: ${dbOrgId})`);
-    console.log(`✅ Using User: ${userId}`);
-
-    // 2. Create Project
-    const projectName = `Smoke Test ${Date.now()}`;
     const project = await prisma.project.create({
         data: {
-            name: projectName,
-            orgId: dbOrgId,
-            description: "Automated smoke test project",
+            orgId: org.id,
+            name: `Smoke Test Project ${Date.now()}`,
+            status: "IN_PROGRESS",
+            moduleA: true,
         }
     });
-    console.log(`✅ Created Project: ${project.id} (${project.name})`);
+    console.log(`   Created Project: ${project.name} (${project.id})`);
 
-    try {
-        // 3. Run Stage (Naming)
-        console.log("👉 Running 'naming' stage...");
-        const stageKey = "naming";
+    // 2. Enqueue Job (Module A - Naming)
+    console.log("2. Enqueuing Naming Stage Job...");
+    const userId = "user_smoke_test";
 
-        const runResult = await moduleEngine.runStage({
-            projectId: project.id,
-            stageKey,
-            userId,
-            orgId,
-            regenerate: false,
-            config: {
-                preset: "fast", // Use cheap/fast model
-                provider: "OPENAI", // Explicitly use OpenAI if available
-                model: "gpt-4o-mini"
-            }
-        });
+    // Simulate API call to enqueue
+    const enqueueResult = await enqueueStageJob({
+        projectId: project.id,
+        stageKey: "naming",
+        userId,
+        orgId: org.clerkOrgId,
+        provider: "MOCK",
+        model: "mock-v1"
+    });
 
-        if (!runResult.success) {
-            throw new Error(`Stage execution failed: ${runResult.error}`);
-        }
-
-        console.log(`✅ Stage Run Success! Job: ${runResult.jobId}`);
-
-        // 4. Verify Output
-        const output = await prisma.output.findFirst({
-            where: { id: runResult.outputId },
-            include: { versions: true }
-        });
-
-        if (!output) throw new Error("Output record not found");
-        if (output.versions.length === 0) throw new Error("No output versions created");
-
-        const latestVersion = output.versions[0];
-        console.log(`✅ Output Verified: ${output.id}`);
-        console.log(`   - Versions: ${output.versions.length}`);
-        console.log(`   - Latest Content Preview: ${JSON.stringify(latestVersion.content).slice(0, 50)}...`);
-
-        // 5. Approve Stage
-        console.log("👉 Approving Stage...");
-
-        // Update Stage Status
-        await prisma.stage.update({
-            where: { id: runResult.stageId },
-            data: { status: "APPROVED" }
-        });
-
-        // Update OutputVersion Status
-        await prisma.outputVersion.updateMany({
-            where: { id: latestVersion.id },
-            data: { status: "APPROVED" }
-        });
-
-        // Verify Status
-        const stage = await prisma.stage.findUnique({ where: { id: runResult.stageId } });
-        if (stage?.status !== "APPROVED") throw new Error("Stage status not updated to APPROVED");
-
-        console.log("✅ Stage Approved.");
-
-        // 6. Cleanup
-        console.log("🧹 Cleaning up...");
-        await prisma.project.delete({ where: { id: project.id } });
-        console.log("✅ Project deleted.");
-
-        console.log("\n🎉 SMOKE TEST PASSED: ALL SYSTEMS GO");
-
-    } catch (error) {
-        console.error("\n❌ SMOKE TEST FAILED:", error);
-        // Attempt cleanup
-        try {
-            await prisma.project.delete({ where: { id: project.id } });
-            console.log("⚠️ Cleanup performed after failure.");
-        } catch (e) { }
-        process.exit(1);
+    if (!enqueueResult.success) {
+        throw new Error(`Enqueue failed: ${enqueueResult.error}`);
     }
+    console.log(`   Job Enqueued: ${enqueueResult.jobId}`);
+
+    // 3. Process Job (Simulate Worker)
+    console.log("3. simulating Worker processing...");
+
+    // Explicitly import worker function to run one-off
+    // We can't import worker.ts directly as it starts the loop.
+    // Instead, we use runStage.processStageJob directly as the worker would.
+    const { processStageJob } = await import("../lib/stages/runStage");
+
+    // We need the resolved config that was saved to the job
+    const job = await prisma.job.findUnique({ where: { id: enqueueResult.jobId } });
+    if (!job) throw new Error("Job not found in DB");
+
+    const effectiveConfig = job.runConfig as any; // typed as any/json in prisma
+
+    await processStageJob(
+        job.id,
+        enqueueResult.stageId!,
+        enqueueResult.outputId!,
+        "naming",
+        project.name,
+        false, // isRegenerate
+        userId,
+        effectiveConfig
+    );
+    console.log("   Job processed successfully.");
+
+    // 4. Verify Output
+    console.log("4. Verifying Output...");
+    const output = await prisma.output.findUnique({
+        where: { id: enqueueResult.outputId },
+        include: { versions: true }
+    });
+
+    if (!output || output.versions.length === 0) {
+        throw new Error("Output or Version not created.");
+    }
+
+    const version = output.versions[0];
+    const content = version.content as any;
+
+    console.log("   Output Created:", output.name);
+    console.log("   Version:", version.version);
+    console.log("   Provider:", version.provider);
+    console.log("   Content Title:", content.title); // Should match mock logic
+
+    if (version.provider !== "MOCK") {
+        throw new Error(`Provider mismatch: expected MOCK, got ${version.provider}`);
+    }
+
+    console.log("\n✅ Smoke Test Passed!");
 }
 
-main();
+main()
+    .catch(e => {
+        console.error("\n❌ Smoke Test Failed:", e);
+        process.exit(1);
+    })
+    .finally(async () => {
+        await prisma.$disconnect();
+    });

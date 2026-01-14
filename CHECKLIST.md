@@ -15,7 +15,7 @@
 ### T2 - Prisma + Postgres + Migración Inicial
 - [x] Configurar Prisma con PostgreSQL
 - [x] Crear schema inicial con entidades core
-- [ ] Ejecutar migración inicial (requiere DB running)
+- [x] Ejecutar migración inicial (requiere DB running)
 - [x] Configurar scripts npm (db:migrate, db:seed, db:studio)
 
 ### T3 - Storage (S3-compatible) + Abstracción
@@ -37,11 +37,11 @@
 - [x] Webhook de Clerk para sincronización
 
 ## Fase 2: Identidad y Seguridad Enterprise
-- [ ] T5 - MFA (TOTP + backup codes)
-- [ ] T6 - Organizations contexto org activo
-- [ ] T7 - SSO/SAML por organización (plan Pro)
-- [ ] T8 - Políticas de seguridad por organización
-- [ ] T9 - AuditLog
+- [x] T5 - MFA (TOTP + backup codes)
+- [x] T6 - Organizations contexto org activo
+- [x] T7 - SSO/SAML por organización (plan Pro)
+- [x] T8 - Políticas de seguridad por organización
+- [x] T9 - AuditLog
 
 ## Fase 3: Modelo de Negocio
 - [ ] T10 - Entidades core (DB)
@@ -80,7 +80,7 @@
 - [ ] T27 - Módulo B (Brand Strategy)
 
 ## Fase 7: Billing & Plans (Stripe)
-- [ ] T28 - Stripe Checkout + suscripciones
+- [/] T28 - Stripe Checkout + suscripciones (Integración inicial backend/hook completa)
 - [ ] T29 - Add-ons (seats/storage)
 - [ ] T30 - Metering tokens/imágenes
 - [ ] T31 - Gating por pago fallido
@@ -95,6 +95,11 @@
 
 ## Fase 10: QA y Lanzamiento
 - [ ] T36 - Test suite mínima
-- [ ] T37 - Observabilidad
+- [x] T37 - Observabilidad (Admin Panel V3 Completo)
+    - [x] Admin Health Dashboard (Workers, AI Status)
+    - [x] Global Job Inspector (List, Filter, Details)
+    - [x] Operational Controls (Retry, Force Fail, View Output)
+    - [x] Spanish Localization (Admin V3)
 - [ ] T38 - Deploy staging + prod
 - [ ] T39 - Beta cerrada
+

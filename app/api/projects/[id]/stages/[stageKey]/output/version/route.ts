@@ -19,7 +19,10 @@ export async function POST(
 
         const { id: projectId, stageKey } = await params;
         const body = await request.json();
-        const { content } = body;
+        const { content, baseVersionId } = body;
+
+        // Guard removed: Generalized for all stages
+
 
         if (!content) {
             return NextResponse.json(
@@ -68,6 +71,8 @@ export async function POST(
                     validated: true,
                     multiplier: 0,
                     billedTokens: 0,
+                    editedFromVersion: baseVersionId || null,
+                    edited: true,
                 },
                 createdBy: userId,
                 type: "EDITED",

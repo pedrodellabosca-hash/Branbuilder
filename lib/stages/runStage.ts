@@ -14,7 +14,7 @@ import { prisma } from "@/lib/db";
 import { getAIProvider } from "@/lib/ai";
 import { getStagePrompt } from "@/lib/prompts";
 import { validateStageOutput, isValidStageKey } from "./schemas";
-import { checkTokenBudget, recordUsage } from "@/lib/usage";
+import { SubscriptionService } from "@/lib/billing/subscription";
 import { resolveEffectiveConfig, serializeConfig } from "@/lib/ai/resolve-config";
 import { type PresetLevel, isValidPreset } from "@/lib/ai/presets";
 import { type EffectiveConfig } from "@/lib/ai/config";
@@ -71,10 +71,32 @@ const STAGE_DEFINITIONS: Record<string, { name: string; module: "A" | "B"; order
 };
 
 // =============================================================================
-// MAIN FUNCTION
+// MAIN FUNCTION (ENQUEUE ONLY)
 // =============================================================================
 
-export async function runStage(params: RunStageParams): Promise<RunStageResult> {
+export interface EnqueueStageResult {
+    success: boolean;
+    jobId: string;
+    status: "QUEUED" | "PROCESSING" | "DONE" | "FAILED";
+    idempotent?: boolean;
+    outputId?: string;
+    stageId?: string;
+    error?: string;
+    // Token info
+    estimatedTokens?: number;
+    remainingTokens?: number;
+    tokenLimitReached?: boolean;
+    suggestUpgrade?: boolean;
+    canPurchaseMore?: boolean;
+    reset?: {
+        date: Date;
+        daysRemaining: number;
+    };
+    preset?: PresetLevel;
+    model?: string;
+}
+
+export async function enqueueStageJob(params: RunStageParams): Promise<EnqueueStageResult> {
     const { projectId, stageKey, regenerate = false, userId, orgId } = params;
 
     // Validate stageKey
@@ -186,8 +208,6 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
     });
 
     // Validate Model Availability & Fallback
-    // If the resolved model is not in our registry (e.g. removed or invalid),
-    // fallback to the default model for the effective preset.
     const { isModelAvailable, getDefaultsByPreset } = await import("@/lib/ai/model-registry");
     const isAvailable = await isModelAvailable(effectiveConfig.model);
 
@@ -207,21 +227,26 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
         effectiveConfig.fallbackWarning = fallbackWarning;
     }
 
-    // Check token budget before proceeding
-    const budget = await checkTokenBudget(org.id, effectiveConfig.estimatedTokens);
+    // Check token budget BEFORE queueing
+    // This is the main "Gate"
+    try {
+        await SubscriptionService.checkUsage(org.id, effectiveConfig.estimatedTokens);
+    } catch (error: any) {
+        // We throw a specific error object that the API route will catch and transform 
+        // OR we return the error result if this function is only used by API.
+        // runStage/enqueueStageJob returns a result object, not a Response directly.
+        // So we keep the structured return but match the helper's shape perfectly.
 
-    if (!budget.allowed) {
         return {
             success: false,
             jobId: "",
             status: "FAILED",
-            error: budget.suggestUpgrade
-                ? "Monthly token limit reached. Upgrade to MID or PRO plan for more tokens."
-                : "Monthly token limit reached. Purchase additional tokens to continue.",
-            stageId: stage.id,
+            error: "TOKEN_LIMIT_REACHED",
+            estimatedTokens: effectiveConfig.estimatedTokens,
+            // For now, simpler return as checkUsage throws on failure.
+            // ideal would be passing more budget info back if needed.
             tokenLimitReached: true,
-            suggestUpgrade: budget.suggestUpgrade,
-            remainingTokens: budget.remaining,
+            suggestUpgrade: true,
         };
     }
 
@@ -246,7 +271,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
         });
     }
 
-    // Create job
+    // Create job (QUEUED)
     const jobType = isRegenerate ? "REGENERATE_OUTPUT" : "GENERATE_OUTPUT";
     const job = await prisma.job.create({
         data: {
@@ -255,7 +280,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
             module: stage.module,
             stage: stageKey,
             type: jobType,
-            // Persist the effective configuration (Source of Truth)
+            status: "QUEUED",
             runConfig: serializeConfig(effectiveConfig) as any,
             payload: {
                 stageId: stage.id,
@@ -263,44 +288,23 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
                 stageKey,
                 projectName: project.name,
                 userId,
-                // Keep config in payload for redundancy/compatibility
+                // Redundant config just in case
                 ...serializeConfig(effectiveConfig),
             },
         },
     });
 
-    // Process job inline (dev mode) or return for async processing
-    // For now, process inline
-    try {
-        await processStageJob(job.id, stage.id, output.id, stageKey, project.name, isRegenerate, userId, effectiveConfig);
-
-        // Fetch updated job status
-        const updatedJob = await prisma.job.findUnique({
-            where: { id: job.id },
-        });
-
-        return {
-            success: updatedJob?.status === "DONE",
-            jobId: job.id,
-            status: (updatedJob?.status as "QUEUED" | "PROCESSING" | "DONE" | "FAILED") || "FAILED",
-            outputId: output.id,
-            stageId: stage.id,
-            error: updatedJob?.error || undefined,
-            estimatedTokens: effectiveConfig.estimatedTokens,
-            remainingTokens: budget.remaining - effectiveConfig.estimatedTokens,
-            preset: effectiveConfig.preset,
-            model: effectiveConfig.model,
-        };
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        return {
-            success: false,
-            jobId: job.id,
-            status: "FAILED",
-            error: errorMessage,
-            stageId: stage.id,
-        };
-    }
+    // Return success immediately (Async)
+    return {
+        success: true,
+        jobId: job.id,
+        status: "QUEUED",
+        stageId: stage.id,
+        outputId: output.id,
+        estimatedTokens: effectiveConfig.estimatedTokens,
+        preset: effectiveConfig.preset,
+        model: effectiveConfig.model,
+    };
 }
 
 // =============================================================================
@@ -374,16 +378,12 @@ export async function processStageJob(
         });
 
         if (job?.orgId && aiResponse.usage) {
-            await recordUsage({
-                orgId: job.orgId,
+            await SubscriptionService.recordUsage(job.orgId, aiResponse.usage.totalTokens || 0, {
                 projectId: job.projectId || undefined,
                 stageKey,
                 jobId,
                 provider: provider.type,
                 model: aiResponse.model,
-                inputTokens: aiResponse.usage.promptTokens || 0,
-                outputTokens: aiResponse.usage.completionTokens || 0,
-                multiplier: PRESET_MULTIPLIERS[effectiveConfig.preset] || 1.0,
             });
         }
 
@@ -448,15 +448,21 @@ export async function processStageJob(
                 },
             },
         });
-    } catch (error) {
+    } catch (error: any) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         console.error(`[runStage] Job ${jobId} failed:`, errorMessage);
+
+        // Check for specific provider error
+        const isConfigError = error.code === "PROVIDER_NOT_CONFIGURED";
+        const finalError = isConfigError
+            ? "AI Provider not configured. Please add API keys or set AI_MOCK_MODE=1."
+            : errorMessage;
 
         await prisma.job.update({
             where: { id: jobId },
             data: {
                 status: "FAILED",
-                error: errorMessage,
+                error: finalError,
                 completedAt: new Date(),
             },
         });

@@ -9,6 +9,7 @@ const createProjectSchema = z.object({
     language: z.enum(["ES", "EN"]).default("ES"),
     moduleA: z.boolean().default(false),
     moduleB: z.boolean().default(false),
+    moduleVenture: z.boolean().default(false),
 });
 
 // GET /api/projects - List projects for current org
@@ -79,6 +80,14 @@ export async function POST(request: NextRequest) {
             },
         });
 
+        console.log(`[POST /api/projects] Auth: userId=${userId} orgId=${orgId}`);
+        if (org) {
+            console.log(`[POST /api/projects] Org Found: ${org.id} (Clerk: ${org.clerkOrgId})`);
+            console.log(`[POST /api/projects] Member Found: ${org.members.length > 0 ? org.members[0].role : 'NONE'}`);
+        } else {
+            console.log(`[POST /api/projects] Org NOT Found for clerkOrgId: ${orgId}`);
+        }
+
         if (!org) {
             return NextResponse.json(
                 { error: "Organización no encontrada" },
@@ -118,10 +127,10 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { name, description, language, moduleA, moduleB } = validation.data;
+        const { name, description, language, moduleA, moduleB, moduleVenture } = validation.data;
 
         // Must select at least one module
-        if (!moduleA && !moduleB) {
+        if (!moduleA && !moduleB && !moduleVenture) {
             return NextResponse.json(
                 { error: "Debes seleccionar al menos un módulo" },
                 { status: 400 }
@@ -139,6 +148,7 @@ export async function POST(request: NextRequest) {
                     language,
                     moduleA,
                     moduleB,
+                    moduleVenture,
                     members: {
                         create: {
                             userId,
@@ -146,34 +156,43 @@ export async function POST(request: NextRequest) {
                             role: "PROJECT_OWNER",
                         },
                     },
-                },
+                } as any,
             });
 
             // Create stages based on enabled modules
             const stages = [];
+            let currentOrder = 1;
+
+            if (moduleVenture) {
+                stages.push(
+                    { displayKey: "V1", stageKey: "venture_intake", name: "Intake de Idea", module: "V" as any, order: currentOrder++ },
+                    { displayKey: "V2", stageKey: "venture_idea_validation", name: "Validación de Idea", module: "V" as any, order: currentOrder++ },
+                    { displayKey: "V3", stageKey: "venture_buyer_persona", name: "Buyer Persona (V)", module: "V" as any, order: currentOrder++ },
+                    { displayKey: "V4", stageKey: "venture_business_plan", name: "Plan de Negocio", module: "V" as any, order: currentOrder++ }
+                );
+            }
 
             if (moduleA) {
                 stages.push(
-                    { displayKey: "A1", stageKey: "context", name: "Contexto & Posicionamiento", module: "A" as const, order: 1 },
-                    { displayKey: "A2", stageKey: "naming", name: "Naming Estratégico", module: "A" as const, order: 2 },
-                    { displayKey: "A3", stageKey: "manifesto", name: "Manifiesto & Narrativa", module: "A" as const, order: 3 },
-                    { displayKey: "A4", stageKey: "visual_identity", name: "Identidad Visual", module: "A" as const, order: 4 },
-                    { displayKey: "A5", stageKey: "applications", name: "Aplicaciones de Marca", module: "A" as const, order: 5 },
-                    { displayKey: "A6", stageKey: "closing", name: "Cierre / Entrega", module: "A" as const, order: 6 }
+                    { displayKey: "A1", stageKey: "context", name: "Contexto & Posicionamiento", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "A2", stageKey: "naming", name: "Naming Estratégico", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "A3", stageKey: "manifesto", name: "Manifiesto & Narrativa", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "A4", stageKey: "visual_identity", name: "Identidad Visual", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "A5", stageKey: "applications", name: "Aplicaciones de Marca", module: "A" as const, order: currentOrder++ },
+                    { displayKey: "A6", stageKey: "closing", name: "Cierre / Entrega", module: "A" as const, order: currentOrder++ }
                 );
             }
 
             if (moduleB) {
-                const baseOrder = moduleA ? 7 : 1;
                 stages.push(
-                    { displayKey: "B1", stageKey: "briefing", name: "Briefing (PM)", module: "B" as const, order: baseOrder },
-                    { displayKey: "B2", stageKey: "insights", name: "Consumer Insights", module: "B" as const, order: baseOrder + 1 },
-                    { displayKey: "B3", stageKey: "strategy", name: "Competitive Strategy", module: "B" as const, order: baseOrder + 2 },
-                    { displayKey: "B4", stageKey: "cso", name: "CSO (Cascada de Elecciones)", module: "B" as const, order: baseOrder + 3 },
-                    { displayKey: "B5", stageKey: "metrics", name: "Brand Metrics", module: "B" as const, order: baseOrder + 4 },
-                    { displayKey: "B6", stageKey: "narrative", name: "Brand Narrative", module: "B" as const, order: baseOrder + 5 },
-                    { displayKey: "B7", stageKey: "integration", name: "Integración PM + Verificación", module: "B" as const, order: baseOrder + 6 },
-                    { displayKey: "B8", stageKey: "delivery", name: "Entrega Strategy Pack", module: "B" as const, order: baseOrder + 7 }
+                    { displayKey: "B1", stageKey: "briefing", name: "Briefing (PM)", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B2", stageKey: "insights", name: "Consumer Insights", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B3", stageKey: "strategy", name: "Competitive Strategy", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B4", stageKey: "cso", name: "CSO (Cascada de Elecciones)", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B5", stageKey: "metrics", name: "Brand Metrics", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B6", stageKey: "narrative", name: "Brand Narrative", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B7", stageKey: "integration", name: "Integración PM + Verificación", module: "B" as const, order: currentOrder++ },
+                    { displayKey: "B8", stageKey: "delivery", name: "Entrega Strategy Pack", module: "B" as const, order: currentOrder++ }
                 );
             }
 
@@ -201,7 +220,7 @@ export async function POST(request: NextRequest) {
                     action: "PROJECT_CREATED",
                     resource: "project",
                     resourceId: newProject.id,
-                    metadata: { name, moduleA, moduleB, language },
+                    metadata: { name, moduleA, moduleB, moduleVenture, language },
                 },
             });
 

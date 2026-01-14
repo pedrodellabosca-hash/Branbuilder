@@ -4,22 +4,21 @@ import path from 'path';
 const envPath = path.resolve(process.cwd(), '.env');
 const examplePath = path.resolve(process.cwd(), '.env.example');
 
-if (fs.existsSync(envPath)) {
-    // It exists, do nothing (idempotent)
-    process.exit(0);
+// Safe bootstrap: only create if missing
+if (!fs.existsSync(envPath)) {
+    if (fs.existsSync(examplePath)) {
+        try {
+            fs.copyFileSync(examplePath, envPath);
+            console.log('\x1b[32m%s\x1b[0m', '✅ .env created from .env.example');
+        } catch (error) {
+            console.error('❌ Failed to create .env');
+            process.exit(1);
+        }
+    } else {
+        console.warn('⚠️ .env.example missing. Skipping env bootstrap.');
+    }
+} else {
+    // .env exists - do NOT overwrite
+    // console.log('Checking env...'); 
 }
 
-if (!fs.existsSync(examplePath)) {
-    console.error('\x1b[31m%s\x1b[0m', '❌ .env.example not found! Cannot bootstrap environment.');
-    process.exit(1);
-}
-
-try {
-    fs.copyFileSync(examplePath, envPath);
-    console.log('\x1b[32m%s\x1b[0m', '✅ .env created from .env.example');
-    console.log('\x1b[36m%s\x1b[0m', '💡 Please update .env with your real API keys (Clerk, OpenAI).');
-} catch (error) {
-    console.error('\x1b[31m%s\x1b[0m', '❌ Failed to copy .env.example to .env');
-    console.error(error);
-    process.exit(1);
-}

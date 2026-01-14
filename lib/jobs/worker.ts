@@ -19,6 +19,9 @@ const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 console.log(`[Worker] Starting with ID: ${WORKER_ID}`);
 console.log(`[Worker] Poll interval: ${POLL_INTERVAL_MS}ms`);
 
+// Heartbeat interval (separate from poll)
+const HEARTBEAT_MS = 10000;
+
 interface JobRecord {
     id: string;
     type: string;
@@ -35,6 +38,12 @@ interface JobRecord {
  * Main worker loop
  */
 async function runWorker(): Promise<void> {
+    // Initial heartbeat
+    await sendHeartbeat();
+
+    // Schedule heartbeat loop
+    setInterval(() => sendHeartbeat().catch(console.error), HEARTBEAT_MS);
+
     while (true) {
         try {
             await processNextJob();
@@ -220,6 +229,21 @@ async function processGenerateOutput(job: JobRecord): Promise<void> {
 // Utilities
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendHeartbeat() {
+    await (prisma as any).workerHeartbeat.upsert({
+        where: { workerId: WORKER_ID },
+        create: {
+            workerId: WORKER_ID,
+            startedAt: new Date(),
+            lastSeenAt: new Date(),
+            version: process.env.GIT_SHA || null
+        },
+        update: {
+            lastSeenAt: new Date()
+        }
+    });
 }
 
 // Graceful shutdown

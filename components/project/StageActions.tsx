@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Play, RefreshCw, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { Play, RefreshCw, Loader2, AlertCircle, CheckCircle, Bug } from "lucide-react";
 import { TokenLimitBanner } from "@/components/usage/TokenLimitBanner";
 import { v4 as uuidv4 } from "uuid";
 
@@ -17,8 +17,6 @@ interface StageActionsProps {
 }
 
 type JobStatus = "QUEUED" | "PROCESSING" | "DONE" | "FAILED";
-
-
 
 export function StageActions({
     projectId,
@@ -37,6 +35,9 @@ export function StageActions({
         (initialJobStatus as JobStatus) || null
     );
 
+    // Development Debug Info
+    const [lastHttpStatus, setLastHttpStatus] = useState<number | null>(null);
+
     const canGenerate = status === "NOT_STARTED";
     const canRegenerate = status === "GENERATED" || status === "APPROVED" || status === "REGENERATED";
 
@@ -46,13 +47,25 @@ export function StageActions({
     const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isMountedRef = useRef(true);
 
-    // Cleanup on unmount
+    // Persistence Key
+    const LS_KEY = `bf:job:${projectId}:${stageKey}`;
+
+    // Auto-resume from LocalStorage
     useEffect(() => {
         isMountedRef.current = true;
-        // Resume polling if we have an active job on mount
-        if (jobId && (jobStatus === "QUEUED" || jobStatus === "PROCESSING")) {
+
+        // 1. Check prop (initialJobId) first, then LocalStorage
+        const storedJobId = localStorage.getItem(LS_KEY);
+        if (!jobId && storedJobId) {
+            console.debug("[StageActions] Resuming job from persistence:", storedJobId);
+            setJobId(storedJobId);
+            setJobStatus("PROCESSING"); // Assume processing if stored
+            pollJobStatus(storedJobId);
+        } else if (jobId && (jobStatus === "QUEUED" || jobStatus === "PROCESSING")) {
+            // Resume from prop
             pollJobStatus(jobId);
         }
+
         return () => {
             isMountedRef.current = false;
             if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
@@ -109,80 +122,65 @@ export function StageActions({
         setIsLoading(true);
         setError(null);
 
-        // Validate projectId is present (before cooldown so error doesn't trigger cooldown)
+        // Validate projectId
         if (!projectId || !stageKey) {
-            // Updated to simple string here since type allows Node, but good to keep simple
             setError("Error: projectId o stageKey no disponible");
             setIsLoading(false);
             return;
         }
 
-        // Set cooldown AFTER validation passes (1 = active, 0 = inactive)
+        // Set cooldown
         setCooldownUntil(1);
-
-        // Clear previous timer and schedule reset
-        if (cooldownTimerRef.current) {
-            clearTimeout(cooldownTimerRef.current);
-        }
+        if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
         cooldownTimerRef.current = setTimeout(() => {
             setCooldownUntil(0);
             cooldownTimerRef.current = null;
         }, COOLDOWN_MS);
 
-        console.log("[StageActions] Enqueueing stage:", { projectId, stageKey });
+        console.debug("[StageActions] Enqueueing stage:", { projectId, stageKey });
 
         try {
-            // Use new /run endpoint (handles idempotency server-side)
             const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    regenerate: true
-                })
+                body: JSON.stringify({ regenerate: true })
             });
 
             if (!response.ok) {
                 const data = await response.json();
-
-                // Gating: Handle 402 Token Limit
                 if (response.status === 402) {
-                    setError(
-                        <TokenLimitBanner
-                            error={data}
-                            onPurchaseAddon={buyAddon}
-                        />
-                    );
-                    setIsLoading(false);
-                    return;
+                    setError(<TokenLimitBanner error={data} onPurchaseAddon={buyAddon} />);
                     setIsLoading(false);
                     return;
                 }
-
-                if (response.status === 401) {
-                    throw new Error("Authentication required");
-                }
+                if (response.status === 401) throw new Error("Authentication required");
                 throw new Error(data.error || "Error ejecutando etapa");
             }
 
             const data = await response.json();
-            setJobId(data.jobId);
+            const newJobId = data.jobId;
+
+            console.debug("[StageActions] Job Started:", newJobId);
+            setJobId(newJobId);
             setJobStatus(data.status || "QUEUED");
 
-            // Persist Job ID in URL for refresh resilience
+            // Persist
+            localStorage.setItem(LS_KEY, newJobId);
+
+            // URL Param
             const url = new URL(window.location.href);
-            url.searchParams.set("jobId", data.jobId);
+            url.searchParams.set("jobId", newJobId);
             window.history.replaceState({}, "", url.toString());
 
-            // If idempotent response (job already running), continue polling
+            // Check Idempotency
             if (data.idempotent) {
-                console.log("[StageActions] Job already in progress:", data.jobId);
+                console.warn("[StageActions] Job already in progress (idempotent):", newJobId);
             }
 
-            // Start polling regardless of status (unless failed immediately)
             if (data.status === "FAILED") {
-                setError(data.error || "El job falló al iniciar");
+                handleJobFailed(data.error || "El job falló al iniciar");
             } else {
-                pollJobStatus(data.jobId);
+                pollJobStatus(newJobId, true); // Pass true to indicate fresh start
             }
 
         } catch (err) {
@@ -194,58 +192,127 @@ export function StageActions({
         }
     };
 
-    const pollJobStatus = async (id: string) => {
-        const maxAttempts = 60; // 60 seconds max timeout for UI polling
+    // Helper to handle completion
+    const handleJobDone = (result: any) => {
+        console.debug("[StageActions] handleJobDone triggered");
+        setJobStatus("DONE");
+        setIsLoading(false);
+        localStorage.removeItem(LS_KEY); // Clear persistence
+
+        // Cleanup URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete("jobId");
+        window.history.replaceState({}, "", url.toString());
+
+        // Refresh Data
+        router.refresh();
+    };
+
+    // Helper to handle failure
+    const handleJobFailed = (msg: string) => {
+        console.debug("[StageActions] handleJobFailed triggered:", msg);
+        setJobStatus("FAILED");
+        setError(msg);
+        setIsLoading(false);
+        localStorage.removeItem(LS_KEY);
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete("jobId");
+        window.history.replaceState({}, "", url.toString());
+    };
+
+
+    const pollJobStatus = async (id: string, isFresh = false) => {
+        const maxAttempts = 90;
         let attempts = 0;
+        let initialVersionId: string | null = null; // for dual-confirmation
+
+        // Get initial latest version ID to detect changes
+        if (isFresh) {
+            try {
+                const res = await fetch(`/api/projects/${projectId}/stages/${stageKey}/output`, { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    initialVersionId = data.latestVersion?.id || null;
+                    console.debug("[StageActions] Initial Version ID:", initialVersionId);
+                }
+            } catch (e) { /* ignore */ }
+        }
 
         const poll = async () => {
             if (!isMountedRef.current) return;
 
+            // 1. Fetch Job Status (Project Scoped)
             try {
-                const response = await fetch(`/api/jobs/${id}`);
-                if (!response.ok) {
-                    // non-critical error, maybe retry?
-                    console.warn("Poll failed:", response.status);
+                const jobRes = await fetch(`/api/projects/${projectId}/jobs/${id}`, {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+
+                setLastHttpStatus(jobRes.status);
+
+                if (jobRes.status === 401) {
+                    handleJobFailed("Sesión expirada. Por favor recarga la página.");
                     return;
                 }
 
-                const data = await response.json();
+                if (jobRes.ok) {
+                    const data = await jobRes.json();
+                    if (!isMountedRef.current) return;
 
-                if (!isMountedRef.current) return;
+                    console.debug(`[StageActions] Poll Job ${id}: ${data.status}`);
+                    setJobStatus(data.status);
 
-                setJobStatus(data.status);
-
-                if (data.status === "DONE") {
-                    console.log("[StageActions] Job DONE", data.result);
-                    setJobStatus("DONE");
-                    router.refresh();
-
-                    // Clear param clean
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("jobId");
-                    window.history.replaceState({}, "", url.toString());
-
-                    return;
-                }
-
-                if (data.status === "FAILED") {
-                    setJobStatus("FAILED");
-                    setError(data.error || "El job falló durante el procesamiento");
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("jobId");
-                    window.history.replaceState({}, "", url.toString());
-                    return;
-                }
-
-                attempts++;
-                if (attempts < maxAttempts) {
-                    setTimeout(poll, 1500); // 1.5s interval
+                    if (data.status === "DONE") {
+                        handleJobDone(data.result);
+                        return;
+                    }
+                    if (data.status === "FAILED") {
+                        handleJobFailed(data.error || "El job falló");
+                        return;
+                    }
                 } else {
-                    setError("Tiempo de espera agotado. La generación continúa en segundo plano.");
+                    console.warn(`[StageActions] Poll Job Error: ${jobRes.status}`);
                 }
             } catch (err) {
-                console.error("Poll error:", err);
+                console.error("[StageActions] Poll Network Error:", err);
             }
+
+            // 2. Dual-Check: Verify if output version changed via API
+            try {
+                const outRes = await fetch(`/api/projects/${projectId}/stages/${stageKey}/output`, {
+                    cache: 'no-store'
+                });
+                if (outRes.ok) {
+                    const outData = await outRes.json();
+                    const currentLatestId = outData.latestVersion?.id;
+
+                    // If we have a new version compared to what we started with (or just a valid latest version if we didn't track start)
+                    // Note: Ideally we compare timestamps or IDs. 
+                    // If isFresh=true and initialVersionId is set, checking change is safe.
+                    // If resuming, initialVersionId is null, so simply having a version created *after* job start would be ideal.
+                    // For now, if status is NOT done but we see a version created very recently, we could infer.
+                    // But simpler: if Job logic above failed (network/auth) but Output exists, maybe we are done?
+                    // Let's stick to: if Job says DONE (handled above).
+                    // If Job is stuck but output appears? 
+                    if (initialVersionId && currentLatestId && currentLatestId !== initialVersionId) {
+                        console.debug("[StageActions] Dual-Check: New version detected!", currentLatestId);
+                        handleJobDone({}); // Infer done
+                        return;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
+            attempts++;
+            if (attempts >= maxAttempts) {
+                setError("El proceso está tardando más de lo esperado. Puedes recargar la página.");
+                setIsLoading(false);
+                // Don't clear LocalStorage so user can refresh and try poll again if they want, 
+                // or maybe we should to avoid infinite loop. Let's clear loading state but keep ID.
+                return;
+            }
+
+            setTimeout(poll, 1500);
         };
 
         poll();
@@ -255,47 +322,33 @@ export function StageActions({
         if (!jobId || !jobStatus) return null;
 
         const statusConfig = {
-            QUEUED: {
-                icon: Loader2,
-                text: "En cola...",
-                color: "text-yellow-400",
-                animate: true,
-            },
-            PROCESSING: {
-                icon: Loader2,
-                text: "Generando...",
-                color: "text-blue-400",
-                animate: true,
-            },
-            DONE: {
-                icon: CheckCircle,
-                text: "Completado",
-                color: "text-green-400",
-                animate: false,
-            },
-            FAILED: {
-                icon: AlertCircle,
-                text: "Error",
-                color: "text-red-400",
-                animate: false,
-            },
+            QUEUED: { icon: Loader2, text: "En cola...", color: "text-yellow-400", animate: true },
+            PROCESSING: { icon: Loader2, text: "Generando...", color: "text-blue-400", animate: true },
+            DONE: { icon: CheckCircle, text: "Completado", color: "text-green-400", animate: false },
+            FAILED: { icon: AlertCircle, text: "Error", color: "text-red-400", animate: false },
         };
 
-        // Default to PROCESSING if unknown status to be safe, or FAILED if truly unknown
         const config = statusConfig[jobStatus] || statusConfig.FAILED;
         const Icon = config.icon;
 
         return (
-            <div className={`flex items-center gap-2 ${config.color} bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50`}>
-                <Icon className={`w-4 h-4 ${config.animate ? "animate-spin" : ""}`} />
-                <span className="text-sm font-medium">{config.text}</span>
+            <div className={`flex flex-col gap-1`}>
+                <div className={`flex items-center gap-2 ${config.color} bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50`}>
+                    <Icon className={`w-4 h-4 ${config.animate ? "animate-spin" : ""}`} />
+                    <span className="text-sm font-medium">{config.text}</span>
+                </div>
+                {/* Dev Debug Info - Hidden in Prod ideally, but showing for QA context */}
+                {process.env.NODE_ENV === 'development' && (
+                    <div className="text-[10px] text-slate-600 font-mono pl-1">
+                        Job: {jobId?.slice(0, 8)}... | Status: {jobStatus} | HTTP: {lastHttpStatus}
+                    </div>
+                )}
             </div>
         );
     };
 
     return (
         <div className="space-y-6">
-            {/* Error message */}
             {error && (
                 <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -303,18 +356,15 @@ export function StageActions({
                 </div>
             )}
 
-            {/* Job status */}
             {getJobStatusUI()}
 
-            {/* Action buttons */}
             <div className="flex flex-wrap gap-3">
-                {/* Generate button */}
                 <button
                     onClick={() => enqueueJob()}
                     disabled={!canGenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
                 >
-                    {isLoading || jobStatus === "QUEUED" || jobStatus === "PROCESSING" ? (
+                    {isLoading || ["QUEUED", "PROCESSING"].includes(jobStatus || "") ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                         <Play className="w-4 h-4" />
@@ -322,13 +372,12 @@ export function StageActions({
                     {jobStatus === "QUEUED" ? "En cola..." : jobStatus === "PROCESSING" ? "Generando..." : "Generar"}
                 </button>
 
-                {/* Regenerate button */}
                 <button
                     onClick={() => enqueueJob()}
                     disabled={!canRegenerate || isLoading || inCooldown || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-lg font-medium transition-colors"
                 >
-                    {isLoading || jobStatus === "QUEUED" || jobStatus === "PROCESSING" ? (
+                    {isLoading || ["QUEUED", "PROCESSING"].includes(jobStatus || "") ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                         <RefreshCw className="w-4 h-4" />
@@ -337,7 +386,6 @@ export function StageActions({
                 </button>
             </div>
 
-            {/* Status hints */}
             <div className="text-xs text-slate-500">
                 {status === "NOT_STARTED" && !jobStatus && "Haz clic en Generar para iniciar esta etapa."}
                 {status === "GENERATED" && !jobStatus && "Puedes aprobar o regenerar el contenido."}
@@ -347,4 +395,3 @@ export function StageActions({
         </div>
     );
 }
-

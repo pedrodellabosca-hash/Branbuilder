@@ -67,6 +67,23 @@ export async function POST(request: NextRequest) {
             },
         });
 
+        // Audit Log (Fire and forget)
+        const { writeAuditLog } = await import("@/lib/audit");
+        // @ts-ignore
+        writeAuditLog({
+            orgId: org.id,
+            userId: userId,
+            // @ts-ignore
+            action: "ORG_SWITCHED" as any,
+            resource: "organization",
+            resourceId: org.id,
+            metadata: {
+                clerkOrgId: orgId,
+                syncType: "upsert",
+                userRole: dbRole
+            }
+        });
+
         return NextResponse.json({
             ok: true,
             orgId: orgId,

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { moduleEngine } from "@/lib/modules/ModuleEngine";
+import { createTokenLimitResponse } from "@/lib/utils/tokenErrors";
 
 export async function POST(
     request: NextRequest,
@@ -58,6 +59,18 @@ export async function POST(
 
         if (!result.success && result.error) {
             // Determine status code based on error
+            // New: Handle Token Gating
+            if (result.error === "TOKEN_LIMIT_REACHED" || result.tokenLimitReached) {
+                return createTokenLimitResponse({
+                    plan: "BASIC", // Default fallback if not provided by result (needs upstream exposure or lookup)
+                    canPurchaseMore: result.canPurchaseMore ?? false,
+                    suggestUpgrade: result.suggestUpgrade ?? false,
+                    remainingTokens: result.remainingTokens ?? 0,
+                    estimatedTokens: result.estimatedTokens ?? 0,
+                    reset: result.reset || { date: new Date(), daysRemaining: 0 }
+                });
+            }
+
             const status = result.error.includes("not found") ? 404 : 400;
             return NextResponse.json(
                 { error: result.error },

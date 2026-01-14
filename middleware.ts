@@ -16,12 +16,20 @@ function isApiRoute(pathname: string): boolean {
     return pathname.startsWith('/api/') || pathname.startsWith('/trpc/')
 }
 
-export const proxy = clerkMiddleware(async (auth, request) => {
+// Define admin routes
+const isAdminRoute = createRouteMatcher(['/admin(.*)', '/org-admin(.*)']);
+
+export default clerkMiddleware(async (auth, request) => {
     const { pathname } = request.nextUrl
 
     // Skip public routes
     if (isPublicRoute(request)) {
         return
+    }
+
+    // NEW: Allow admin routes to pass through (Server Components handle security)
+    if (isAdminRoute(request)) {
+        return NextResponse.next()
     }
 
     // Get auth state
@@ -48,6 +56,16 @@ export const proxy = clerkMiddleware(async (auth, request) => {
 
     // If no user session
     if (!userId) {
+        // CHECK CUSTOM COOKIE (SSO)
+        // We can't use 'jose' directly in middleware safely without ensuring edge compatibility usually.
+        // But 'jose' is edge compatible. 
+        // We check solely for cookie existence to skip Clerk redirect.
+        // Validation happens in Server Components/API via 'requireAuth'.
+        const ssoCookie = request.cookies.get("custom_sso_session");
+        if (ssoCookie) {
+            return NextResponse.next();
+        }
+
         // API routes: return 401 JSON (not redirect)
         if (isApiRoute(pathname)) {
             return NextResponse.json(

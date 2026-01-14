@@ -145,6 +145,9 @@ export async function GET(
                         totalTokens: params.totalTokens || 0,
                         multiplier: params.multiplier || 1.0,
                         billedTokens: params.billedTokens || params.totalTokens || 0,
+                        validated: params.validated || false,
+                        validationError: params.validationError || null,
+                        fallbackWarning: params.fallbackWarning || null,
                     }
                 };
             }) || [],

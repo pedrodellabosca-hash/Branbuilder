@@ -1,4 +1,4 @@
-import { runStage, type RunStageParams, type RunStageResult } from "@/lib/stages/runStage";
+import { enqueueStageJob, type RunStageParams, type EnqueueStageResult } from "@/lib/stages/runStage";
 import { type PresetLevel } from "@/lib/ai/presets";
 
 /**
@@ -21,9 +21,9 @@ export interface EngineRunParams {
 
 /**
  * Standardized result from the engine.
- * Currently mirrors RunStageResult but allows for extension.
+ * Currently mirrors EnqueueStageResult but allows for extension.
  */
-export interface EngineRunResult extends RunStageResult {
+export interface EngineRunResult extends EnqueueStageResult {
     // Add any engine-specific metadata here in the future
     engineContext?: {
         module: "A" | "B";
@@ -59,8 +59,8 @@ export class ModuleEngine {
         };
 
         try {
-            // Execute
-            const result = await runStage(runnerParams);
+            // Execute (Enqueue)
+            const result = await enqueueStageJob(runnerParams);
 
             // 3. Format Output
             // Attach engine metadata

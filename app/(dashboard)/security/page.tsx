@@ -1,19 +1,31 @@
-import { Shield } from "lucide-react";
 
-export default function SecurityPage() {
+import { Shield } from "lucide-react";
+import { requireAuth } from "@/lib/auth";
+import { prisma } from "@/lib/db/index";
+import { MFAFlow } from "@/components/security/MFAFlow";
+
+export default async function SecurityPage() {
+    const user = await requireAuth();
+
+    // Check MFA status
+    // @ts-ignore - Prisma types are seemingly stale in IDE, but runtime is verified.
+    const mfaRecord = await prisma.userMfaSecret.findUnique({
+        where: { userId: user.id },
+    });
+
+    const isMfaEnabled = mfaRecord?.isEnabled ?? false;
+
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-6">
-                <Shield className="w-8 h-8 text-slate-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-white mb-2">
-                Seguridad
-            </h2>
-            <p className="text-slate-400 mb-6 max-w-sm">
-                Próximamente acceso a registros de auditoría, políticas de seguridad y configuración de SSO/MFA.
-            </p>
-            <div className="px-4 py-2 bg-slate-800 rounded-lg text-sm text-slate-300">
-                🚀 En desarrollo
+        <div className="max-w-4xl mx-auto py-8">
+            <h1 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                <Shield className="w-6 h-6 text-purple-500" />
+                Seguridad de la Cuenta
+            </h1>
+
+            <div className="space-y-6">
+                <MFAFlow initialEnabled={isMfaEnabled} />
+
+                {/* Future: Backup Codes Section */}
             </div>
         </div>
     );

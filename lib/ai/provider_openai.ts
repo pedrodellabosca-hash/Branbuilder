@@ -39,7 +39,9 @@ export class OpenAIProvider implements AIProvider {
 
     async complete(request: AIRequest): Promise<AIResponse> {
         if (!this.apiKey) {
-            throw new Error("OPENAI_API_KEY not configured");
+            const error = new Error("OPENAI_API_KEY not configured");
+            (error as any).code = "PROVIDER_NOT_CONFIGURED";
+            throw error;
         }
 
         const model = request.model || this.model;
