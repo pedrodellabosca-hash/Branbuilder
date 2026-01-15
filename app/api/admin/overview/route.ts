@@ -32,10 +32,14 @@ export async function GET(request: NextRequest) {
             where: { id: parsed.data.projectId, orgId: context.orgId },
             select: { id: true, name: true },
         });
-        if (project) {
-            selectedProjectId = project.id;
-            selectedProjectName = project.name;
+        if (!project) {
+            return NextResponse.json(
+                { error: "Project not found for this org" },
+                { status: 404, headers: { "Cache-Control": "no-store" } }
+            );
         }
+        selectedProjectId = project.id;
+        selectedProjectName = project.name;
     }
 
     return NextResponse.json(

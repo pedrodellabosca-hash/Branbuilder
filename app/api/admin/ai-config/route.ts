@@ -32,6 +32,25 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    if (!parsed.data.projectId) {
+        return NextResponse.json(
+            { error: "projectId required" },
+            { status: 400, headers: { "Cache-Control": "no-store" } }
+        );
+    }
+
+    const project = await prisma.project.findFirst({
+        where: { id: parsed.data.projectId, orgId: context.orgId },
+        select: { id: true },
+    });
+
+    if (!project) {
+        return NextResponse.json(
+            { error: "Project not found for this org" },
+            { status: 404, headers: { "Cache-Control": "no-store" } }
+        );
+    }
+
     const prismaAny = prisma as unknown as {
         organizationAIConfig?: {
             findUnique: (args: unknown) => Promise<{ stageConfigs: unknown } | null>;
@@ -66,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     let projectStageConfigs: unknown = null;
     let projectConfigAvailable = false;
-    if (parsed.data.projectId && prismaAny.projectAIConfig?.findUnique) {
+    if (prismaAny.projectAIConfig?.findUnique) {
         const config = await prismaAny.projectAIConfig.findUnique({
             where: { projectId: parsed.data.projectId },
             select: { stageConfigs: true },
@@ -82,13 +101,11 @@ export async function GET(request: NextRequest) {
                 providerFlags,
                 available: orgConfigAvailable,
             },
-            project: parsed.data.projectId
-                ? {
-                      stageConfigs: projectStageConfigs,
-                      providerFlags,
-                      available: projectConfigAvailable,
-                  }
-                : null,
+            project: {
+                stageConfigs: projectStageConfigs,
+                providerFlags,
+                available: projectConfigAvailable,
+            },
         },
         { headers: { "Cache-Control": "no-store" } }
     );

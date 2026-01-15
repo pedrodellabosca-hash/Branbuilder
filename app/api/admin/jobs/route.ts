@@ -24,10 +24,29 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    if (!parsed.data.projectId) {
+        return NextResponse.json(
+            { error: "projectId required" },
+            { status: 400, headers: { "Cache-Control": "no-store" } }
+        );
+    }
+
+    const project = await prisma.project.findFirst({
+        where: { id: parsed.data.projectId, orgId: context.orgId },
+        select: { id: true },
+    });
+
+    if (!project) {
+        return NextResponse.json(
+            { error: "Project not found for this org" },
+            { status: 404, headers: { "Cache-Control": "no-store" } }
+        );
+    }
+
     const jobs = await prisma.job.findMany({
         where: {
             orgId: context.orgId,
-            ...(parsed.data.projectId ? { projectId: parsed.data.projectId } : {}),
+            projectId: parsed.data.projectId,
         },
         orderBy: { createdAt: "desc" },
         take: 20,
