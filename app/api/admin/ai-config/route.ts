@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/admin/adminGuard";
+import { redactSecrets } from "@/lib/security/redactSecrets";
 
 const querySchema = z.object({
     projectId: z.string().optional(),
@@ -94,19 +95,18 @@ export async function GET(request: NextRequest) {
         projectConfigAvailable = true;
     }
 
-    return NextResponse.json(
-        {
-            org: {
-                stageConfigs: orgStageConfigs,
-                providerFlags,
-                available: orgConfigAvailable,
-            },
-            project: {
-                stageConfigs: projectStageConfigs,
-                providerFlags,
-                available: projectConfigAvailable,
-            },
+    const payload = redactSecrets({
+        org: {
+            stageConfigs: orgStageConfigs,
+            providerFlags,
+            available: orgConfigAvailable,
         },
-        { headers: { "Cache-Control": "no-store" } }
-    );
+        project: {
+            stageConfigs: projectStageConfigs,
+            providerFlags,
+            available: projectConfigAvailable,
+        },
+    });
+
+    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
 }

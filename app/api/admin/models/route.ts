@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/admin/adminGuard";
+import { redactSecrets } from "@/lib/security/redactSecrets";
 
 export async function GET() {
     const authResult = await requireAdminApi();
@@ -40,8 +41,6 @@ export async function GET() {
         },
     });
 
-    return NextResponse.json(
-        { models, notAvailable: false },
-        { headers: { "Cache-Control": "no-store" } }
-    );
+    const payload = redactSecrets({ models, notAvailable: false });
+    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
 }
