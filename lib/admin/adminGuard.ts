@@ -1,7 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-
-export const ADMIN_ROLE_ALLOWLIST = ["org:admin", "org:owner"] as const;
+import { ADMIN_ROLE_ALLOWLIST_VALUES, getAdminContext } from "@/lib/admin/getAdminContext";
 
 export type AdminAuthContext = {
     userId: string;
@@ -11,11 +9,11 @@ export type AdminAuthContext = {
 };
 
 export function isAdminRole(role: string | null | undefined): role is string {
-    return !!role && ADMIN_ROLE_ALLOWLIST.includes(role as (typeof ADMIN_ROLE_ALLOWLIST)[number]);
+    return !!role && ADMIN_ROLE_ALLOWLIST_VALUES.includes(role as (typeof ADMIN_ROLE_ALLOWLIST_VALUES)[number]);
 }
 
 export async function getAdminAuthContext() {
-    const { userId, orgId, orgRole, orgSlug } = await auth();
+    const { userId, orgId, orgRole, orgSlug } = await getAdminContext();
     return {
         userId: userId ?? null,
         orgId: orgId ?? null,
@@ -25,7 +23,7 @@ export async function getAdminAuthContext() {
 }
 
 export async function requireAdminApi() {
-    const { userId, orgId, orgRole, orgSlug } = await auth();
+    const { userId, orgId, orgRole, orgSlug, isAdmin } = await getAdminContext();
 
     if (!userId) {
         return {
@@ -47,7 +45,7 @@ export async function requireAdminApi() {
         };
     }
 
-    if (!isAdminRole(orgRole)) {
+    if (!isAdmin) {
         return {
             ok: false as const,
             response: NextResponse.json(
