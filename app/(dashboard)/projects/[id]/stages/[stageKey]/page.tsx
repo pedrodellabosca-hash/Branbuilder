@@ -5,6 +5,7 @@ import { ArrowLeft, Palette, LineChart, AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { StageActions } from "@/components/project/StageActions";
 import { StageConfigSelector } from "@/components/project/StageConfigSelector";
+import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -129,33 +130,32 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
         "venture_idea_validation",
         "venture_buyer_persona",
         "venture_business_plan",
-    ];
-    const ventureLabels: Record<string, string> = {
+    ] as const;
+    const ventureLabels: Record<(typeof ventureOrder)[number], string> = {
         venture_intake: "Intake",
         venture_idea_validation: "Validación de idea",
         venture_buyer_persona: "Buyer Persona",
         venture_business_plan: "Business Plan",
     };
 
-    const ventureStages = await prisma.stage.findMany({
-        where: {
-            projectId,
-            stageKey: { in: ventureOrder },
-        },
-        select: { stageKey: true, status: true },
-    });
+    const isVentureStage = ventureOrder.includes(stage.stageKey as (typeof ventureOrder)[number]);
+    const ventureSnapshot = isVentureStage ? await getVentureSnapshot(projectId) : null;
 
-    const ventureStatusMap = new Map(
-        ventureStages.map((ventureStage) => [ventureStage.stageKey, ventureStage.status])
-    );
-
-    const ventureIndex = ventureOrder.indexOf(stage.stageKey);
+    const ventureIndex = isVentureStage ? ventureOrder.indexOf(stage.stageKey as (typeof ventureOrder)[number]) : -1;
     const missingPrereqs =
-        ventureIndex > 0
+        ventureSnapshot && ventureIndex > 0
             ? ventureOrder
                   .slice(0, ventureIndex)
-                  .filter((key) => ventureStatusMap.get(key) !== "APPROVED")
+                  .filter((key) => {
+                      const entry = ventureSnapshot.stages[key];
+                      return !(entry.approved || entry.hasOutput);
+                  })
             : [];
+    const missingLinks = missingPrereqs.map((key) => ({
+        key,
+        label: ventureLabels[key],
+        href: `/projects/${projectId}/stages/${key}`,
+    }));
 
     // Get job status if jobId is in query
     let jobStatus: string | undefined;
@@ -226,6 +226,64 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                 </div>
             </div>
 
+            {ventureSnapshot && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <div>
+                        <h2 className="text-lg font-semibold text-white">Snapshot actual</h2>
+                        <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                            {ventureSnapshot.snapshot.problem && (
+                                <li><span className="text-slate-400">Problema:</span> {ventureSnapshot.snapshot.problem}</li>
+                            )}
+                            {ventureSnapshot.snapshot.audience && (
+                                <li><span className="text-slate-400">Audiencia:</span> {ventureSnapshot.snapshot.audience}</li>
+                            )}
+                            {ventureSnapshot.snapshot.persona && (
+                                <li><span className="text-slate-400">Persona:</span> {ventureSnapshot.snapshot.persona}</li>
+                            )}
+                            {ventureSnapshot.snapshot.uvp && (
+                                <li><span className="text-slate-400">Propuesta de valor:</span> {ventureSnapshot.snapshot.uvp}</li>
+                            )}
+                            {ventureSnapshot.snapshot.assumptions && (
+                                <li><span className="text-slate-400">Supuestos:</span> {ventureSnapshot.snapshot.assumptions}</li>
+                            )}
+                            {!ventureSnapshot.snapshot.problem &&
+                                !ventureSnapshot.snapshot.audience &&
+                                !ventureSnapshot.snapshot.persona &&
+                                !ventureSnapshot.snapshot.uvp &&
+                                !ventureSnapshot.snapshot.assumptions && (
+                                    <li className="text-slate-500">Sin datos aún.</li>
+                                )}
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 className="text-sm font-semibold text-slate-200">Faltantes recomendados</h3>
+                        {missingLinks.length === 0 ? (
+                            <p className="mt-2 text-sm text-green-400">Todo listo para continuar.</p>
+                        ) : (
+                            <div className="mt-2 space-y-2">
+                                <ul className="text-sm text-slate-300 list-disc list-inside">
+                                    {missingLinks.map((missing) => (
+                                        <li key={missing.key}>{missing.label}</li>
+                                    ))}
+                                </ul>
+                                <div className="flex flex-wrap gap-3">
+                                    {missingLinks.map((missing) => (
+                                        <Link
+                                            key={missing.key}
+                                            href={missing.href}
+                                            className="text-xs text-blue-400 underline"
+                                        >
+                                            Ir a {missing.label}
+                                        </Link>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {missingPrereqs.length > 0 && !continueAnyway && (
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5" />
@@ -234,7 +292,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                             Recomendado completar las etapas previas antes de continuar.
                         </p>
                         <p className="text-xs text-amber-300">
-                            Pendientes: {missingPrereqs.map((key) => ventureLabels[key] || key).join(", ")}
+                            Pendientes: {missingPrereqs.map((key) => ventureLabels[key]).join(", ")}
                         </p>
                         <Link
                             href={{
