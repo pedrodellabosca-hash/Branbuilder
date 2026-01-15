@@ -218,6 +218,12 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                     Fundamentos completos
                                 </span>
                             )}
+                            <Link
+                                href={`/api/projects/${project.id}/venture/export`}
+                                className="inline-flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+                            >
+                                Exportar Fundamentos (MD)
+                            </Link>
                         </div>
                         <div className="divide-y divide-slate-800">
                             {ventureStages.map(({ config, stage }) => {
