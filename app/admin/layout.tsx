@@ -1,17 +1,15 @@
 import { ReactNode } from "react";
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-
-const ADMIN_ROLE_ALLOWLIST = ["org:admin", "org:owner"];
+import { getAdminAuthContext, isAdminRole } from "@/lib/admin/adminGuard";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-    const { userId, orgRole } = await auth();
+    const { userId, orgRole } = await getAdminAuthContext();
 
     if (!userId) {
         redirect("/sign-in");
     }
 
-    if (!orgRole || !ADMIN_ROLE_ALLOWLIST.includes(orgRole)) {
+    if (!isAdminRole(orgRole)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
                 <div className="max-w-xl rounded border border-slate-800 bg-slate-900 p-6">
