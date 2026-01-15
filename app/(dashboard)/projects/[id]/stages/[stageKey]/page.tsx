@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
     params: Promise<{ id: string; stageKey: string }>;
-    searchParams: Promise<{ jobId?: string }>;
+    searchParams: Promise<{ jobId?: string; continue?: string }>;
 }
 
 async function getStageWithProject(
@@ -86,7 +86,8 @@ async function getJobStatus(jobId: string, dbOrgId: string) {
 export default async function StageDetailPage({ params, searchParams }: PageProps) {
     const { userId, orgId: clerkOrgId } = await auth();
     const { id: projectId, stageKey } = await params;
-    const { jobId: jobIdParam } = await searchParams;
+    const { jobId: jobIdParam, continue: continueParam } = await searchParams;
+    const continueAnyway = continueParam === "1";
 
     if (!userId) {
         redirect("/sign-in");
@@ -122,6 +123,39 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     }
 
 
+
+    const ventureOrder = [
+        "venture_intake",
+        "venture_idea_validation",
+        "venture_buyer_persona",
+        "venture_business_plan",
+    ];
+    const ventureLabels: Record<string, string> = {
+        venture_intake: "Intake",
+        venture_idea_validation: "Validación de idea",
+        venture_buyer_persona: "Buyer Persona",
+        venture_business_plan: "Business Plan",
+    };
+
+    const ventureStages = await prisma.stage.findMany({
+        where: {
+            projectId,
+            stageKey: { in: ventureOrder },
+        },
+        select: { stageKey: true, status: true },
+    });
+
+    const ventureStatusMap = new Map(
+        ventureStages.map((ventureStage) => [ventureStage.stageKey, ventureStage.status])
+    );
+
+    const ventureIndex = ventureOrder.indexOf(stage.stageKey);
+    const missingPrereqs =
+        ventureIndex > 0
+            ? ventureOrder
+                  .slice(0, ventureIndex)
+                  .filter((key) => ventureStatusMap.get(key) !== "APPROVED")
+            : [];
 
     // Get job status if jobId is in query
     let jobStatus: string | undefined;
@@ -191,6 +225,32 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                     </span>
                 </div>
             </div>
+
+            {missingPrereqs.length > 0 && !continueAnyway && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5" />
+                    <div className="space-y-2">
+                        <p className="text-sm text-amber-200">
+                            Recomendado completar las etapas previas antes de continuar.
+                        </p>
+                        <p className="text-xs text-amber-300">
+                            Pendientes: {missingPrereqs.map((key) => ventureLabels[key] || key).join(", ")}
+                        </p>
+                        <Link
+                            href={{
+                                pathname: `/projects/${projectId}/stages/${stage.stageKey}`,
+                                query: {
+                                    ...(jobIdParam ? { jobId: jobIdParam } : {}),
+                                    continue: "1",
+                                },
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-amber-500 text-slate-900 text-xs font-semibold"
+                        >
+                            Continuar igual
+                        </Link>
+                    </div>
+                </div>
+            )}
 
             {/* Actions Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
