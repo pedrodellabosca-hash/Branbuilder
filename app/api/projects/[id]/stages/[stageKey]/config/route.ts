@@ -3,11 +3,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { getVentureBriefSchema } from "@/lib/venture/briefSchemas";
 
 const configSchema = z.object({
-    provider: z.string(),
-    model: z.string(),
-    preset: z.enum(["fast", "balanced", "quality"]),
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    preset: z.enum(["fast", "balanced", "quality"]).optional(),
+    brief: z.unknown().optional(),
 });
 
 export async function PUT(
@@ -32,14 +34,34 @@ export async function PUT(
                 projectId: projectId,
                 project: { org: { clerkOrgId: orgId } }
             },
+            select: { id: true, stageKey: true, config: true } as any,
         });
 
         if (!stage) return new NextResponse("Stage not found", { status: 404 });
 
+        let validatedBrief: unknown | undefined;
+        if (config.brief !== undefined) {
+            const schema = getVentureBriefSchema(stage.stageKey);
+            if (schema) {
+                validatedBrief = schema.parse(config.brief);
+            } else {
+                validatedBrief = config.brief;
+            }
+        }
+
+        const existingConfig = (stage as any).config || {};
+        const nextConfig = {
+            ...existingConfig,
+            ...(config.provider ? { provider: config.provider } : {}),
+            ...(config.model ? { model: config.model } : {}),
+            ...(config.preset ? { preset: config.preset } : {}),
+            ...(config.brief !== undefined ? { brief: validatedBrief } : {}),
+        };
+
         const updatedStage = await prisma.stage.update({
             where: { id: stage.id },
             data: {
-                config: config,
+                config: nextConfig,
             } as any,
         });
 

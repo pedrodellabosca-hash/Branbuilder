@@ -180,6 +180,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
     // Resolve effective configuration
     // Use persisted config from stage if available (and not overridden by params)
     const savedConfig: any = (stage as any).config || {};
+    const brief = savedConfig.brief;
 
     const effectiveConfig = resolveEffectiveConfig({
         stageKey,
@@ -269,6 +270,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
                 userId,
                 // Keep config in payload for redundancy/compatibility
                 ...serializeConfig(effectiveConfig),
+                ...(brief !== undefined ? { brief } : {}),
             },
         },
     });

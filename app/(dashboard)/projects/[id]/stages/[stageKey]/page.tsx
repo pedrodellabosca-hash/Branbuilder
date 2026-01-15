@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { StageActions } from "@/components/project/StageActions";
 import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
+import { VentureBriefEditor } from "@/components/venture/VentureBriefEditor";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -140,6 +141,46 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
 
     const isVentureStage = ventureOrder.includes(stage.stageKey as (typeof ventureOrder)[number]);
     const ventureSnapshot = isVentureStage ? await getVentureSnapshot(projectId) : null;
+    const stageConfig = (stage as any).config ?? {};
+    const savedBrief = (stageConfig as { brief?: Record<string, string> }).brief ?? null;
+
+    const briefPrefill: Record<string, string> = (() => {
+        if (!ventureSnapshot) return {};
+        switch (stage.stageKey) {
+            case "venture_intake":
+                return {
+                    problem: ventureSnapshot.snapshot.problem ?? "",
+                    targetMarket: ventureSnapshot.snapshot.audience ?? "",
+                    productService: ventureSnapshot.snapshot.uvp ?? "",
+                    constraints: ventureSnapshot.snapshot.assumptions ?? "",
+                };
+            case "venture_idea_validation":
+                return {
+                    hypotheses: ventureSnapshot.snapshot.assumptions ?? "",
+                    competitors: "",
+                    channels: "",
+                    pricingAssumptions: "",
+                };
+            case "venture_buyer_persona":
+                return {
+                    personaSummary: ventureSnapshot.snapshot.persona ?? "",
+                    pains: "",
+                    desires: "",
+                    objections: "",
+                };
+            case "venture_business_plan":
+                return {
+                    objective: ventureSnapshot.snapshot.problem ?? "",
+                    revenueModel: "",
+                    goToMarket: ventureSnapshot.snapshot.audience ?? "",
+                    opsAssumptions: ventureSnapshot.snapshot.assumptions ?? "",
+                };
+            default:
+                return {};
+        }
+    })();
+
+    const briefInitial = savedBrief ?? briefPrefill;
 
     const ventureIndex = isVentureStage ? ventureOrder.indexOf(stage.stageKey as (typeof ventureOrder)[number]) : -1;
     const missingPrereqs =
@@ -307,6 +348,17 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                             Continuar igual
                         </Link>
                     </div>
+                </div>
+            )}
+
+            {ventureSnapshot && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                    <h2 className="text-lg font-semibold text-white mb-4">Brief de la etapa</h2>
+                    <VentureBriefEditor
+                        projectId={projectId}
+                        stageKey={stage.stageKey}
+                        initialBrief={briefInitial}
+                    />
                 </div>
             )}
 
