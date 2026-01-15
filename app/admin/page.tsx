@@ -1,22 +1,8 @@
-import { headers } from "next/headers";
-
-async function fetchWhoami() {
-    const headerList = headers();
-    const host = headerList.get("host");
-    const proto = headerList.get("x-forwarded-proto") ?? "http";
-    const origin = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL ?? "";
-
-    const res = await fetch(`${origin}/api/debug/whoami`, {
-        cache: "no-store",
-    });
-    if (!res.ok) {
-        return { error: `Failed to load whoami (${res.status})` };
-    }
-    return res.json();
-}
+import { auth } from "@clerk/nextjs/server";
+import { WhoamiDebugClient } from "@/components/admin/WhoamiDebugClient";
 
 export default async function AdminPage() {
-    const whoami = await fetchWhoami();
+    const { userId, orgId, orgRole, orgSlug } = await auth();
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
@@ -29,11 +15,13 @@ export default async function AdminPage() {
             </div>
 
             <div className="mt-6">
-                <h2 className="text-lg font-semibold">/api/debug/whoami</h2>
+                <h2 className="text-lg font-semibold">Clerk session (server)</h2>
                 <pre className="mt-2 rounded bg-slate-900 p-4 text-sm text-slate-200 overflow-auto">
-                    {JSON.stringify(whoami, null, 2)}
+                    {JSON.stringify({ userId, orgId, orgRole, orgSlug }, null, 2)}
                 </pre>
             </div>
+
+            <WhoamiDebugClient />
         </div>
     );
 }
