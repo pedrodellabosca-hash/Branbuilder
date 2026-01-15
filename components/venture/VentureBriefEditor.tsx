@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { evaluateBriefQuality } from "@/lib/venture/briefQuality";
 
 type BriefField = {
     key: string;
@@ -56,6 +57,10 @@ export function VentureBriefEditor({ projectId, stageKey, initialBrief }: Ventur
         return fields.some((field) => (initialBrief[field.key] ?? "") !== values[field.key]);
     }, [fields, initialBrief, values]);
 
+    const quality = useMemo(() => {
+        return evaluateBriefQuality(stageKey, values);
+    }, [stageKey, values]);
+
     const handleChange = (key: string, value: string) => {
         setValues((prev) => ({ ...prev, [key]: value }));
         if (status !== "saving") setStatus("idle");
@@ -82,6 +87,23 @@ export function VentureBriefEditor({ projectId, stageKey, initialBrief }: Ventur
 
     return (
         <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span className="rounded bg-slate-800 px-2 py-1 text-slate-200">
+                    Score: {quality.score}
+                </span>
+                {quality.missingCritical.length > 0 && (
+                    <span className="text-amber-300">
+                        Faltantes críticos: {quality.missingCritical.join(", ")}
+                    </span>
+                )}
+            </div>
+            {quality.suggestions.length > 0 && (
+                <ul className="text-xs text-slate-400 list-disc list-inside">
+                    {quality.suggestions.map((item) => (
+                        <li key={item}>{item}</li>
+                    ))}
+                </ul>
+            )}
             {fields.map((field) => (
                 <div key={field.key} className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-400">{field.label}</label>
