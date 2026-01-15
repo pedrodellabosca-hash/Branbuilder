@@ -79,7 +79,7 @@ export async function getVentureSnapshot(projectId: string): Promise<VentureSnap
         const latestContent = stage.outputs[0]?.versions[0]?.content ?? null;
         result.stages[key] = {
             approved: stage.status === "APPROVED",
-            hasOutput: !!latestContent,
+            hasOutput: latestContent !== null && latestContent !== undefined,
             latestContent: latestContent ?? undefined,
         };
     }
