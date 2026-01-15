@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { ProjectFiles } from "@/components/project/ProjectFiles";
+import { getNextVentureStage } from "@/lib/venture/getNextVentureStage";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -106,6 +107,8 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         }))
         .filter((entry) => entry.stage);
 
+    const ventureNext = ventureStages.length > 0 ? await getNextVentureStage(project.id) : null;
+
     const statusLabels: Record<string, string> = {
         NOT_STARTED: "No iniciado",
         GENERATED: "Generado",
@@ -196,6 +199,25 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                             <h2 className="text-lg font-semibold text-white">
                                 Fundamentos del negocio
                             </h2>
+                        </div>
+                        <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center gap-3">
+                            {ventureNext?.nextStageKey ? (
+                                <Link
+                                    href={`/projects/${project.id}/stages/${ventureNext.nextStageKey}`}
+                                    className="inline-flex items-center gap-2 rounded bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900"
+                                >
+                                    Continuar con el siguiente paso recomendado
+                                </Link>
+                            ) : (
+                                <span
+                                    className={`text-xs font-semibold px-3 py-1.5 rounded ${ventureNext?.doneApproved
+                                        ? "bg-green-500/10 text-green-400"
+                                        : "bg-amber-500/10 text-amber-300"
+                                        }`}
+                                >
+                                    Fundamentos completos
+                                </span>
+                            )}
                         </div>
                         <div className="divide-y divide-slate-800">
                             {ventureStages.map(({ config, stage }) => {

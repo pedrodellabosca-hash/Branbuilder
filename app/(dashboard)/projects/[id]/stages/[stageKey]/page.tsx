@@ -7,6 +7,8 @@ import { StageActions } from "@/components/project/StageActions";
 import { StageConfigSelector } from "@/components/project/StageConfigSelector";
 import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
 import { VentureBriefEditor } from "@/components/venture/VentureBriefEditor";
+import { getNextVentureStage } from "@/lib/venture/getNextVentureStage";
+import { evaluateBriefQuality } from "@/lib/venture/briefQuality";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -141,6 +143,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
 
     const isVentureStage = ventureOrder.includes(stage.stageKey as (typeof ventureOrder)[number]);
     const ventureSnapshot = isVentureStage ? await getVentureSnapshot(projectId) : null;
+    const ventureNext = isVentureStage ? await getNextVentureStage(projectId) : null;
     const stageConfig = (stage as any).config ?? {};
     const savedBrief = (stageConfig as { brief?: Record<string, string> }).brief ?? null;
 
@@ -181,6 +184,8 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     })();
 
     const briefInitial = savedBrief ?? briefPrefill;
+    const briefQuality = isVentureStage ? evaluateBriefQuality(stage.stageKey, briefInitial) : null;
+    const warnThreshold = 60;
 
     const ventureIndex = isVentureStage ? ventureOrder.indexOf(stage.stageKey as (typeof ventureOrder)[number]) : -1;
     const missingPrereqs =
@@ -322,6 +327,38 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {ventureNext && ventureNext.nextStageKey && ventureNext.nextStageKey !== stage.stageKey && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+                    <h2 className="text-lg font-semibold text-white">Siguiente recomendado</h2>
+                    {briefQuality && briefQuality.score < warnThreshold && (
+                        <p className="text-sm text-amber-300">
+                            Tu brief está incompleto (score {briefQuality.score}). Puedes continuar,
+                            pero se recomienda completar los campos críticos.
+                        </p>
+                    )}
+                    <Link
+                        href={`/projects/${projectId}/stages/${ventureNext.nextStageKey}`}
+                        className="inline-flex items-center gap-2 rounded bg-blue-500 px-3 py-1.5 text-xs font-semibold text-slate-900"
+                    >
+                        Ir al siguiente paso
+                    </Link>
+                </div>
+            )}
+
+            {ventureNext && !ventureNext.nextStageKey && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                    <h2 className="text-lg font-semibold text-white">Fundamentos completos</h2>
+                    <span
+                        className={`mt-3 inline-flex text-xs font-semibold px-3 py-1.5 rounded ${ventureNext.doneApproved
+                            ? "bg-green-500/10 text-green-400"
+                            : "bg-amber-500/10 text-amber-300"
+                            }`}
+                    >
+                        {ventureNext.doneApproved ? "Aprobados" : "Completos con outputs"}
+                    </span>
                 </div>
             )}
 
