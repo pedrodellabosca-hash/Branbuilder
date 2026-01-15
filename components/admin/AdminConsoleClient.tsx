@@ -57,12 +57,22 @@ type Job = {
     createdAt: string;
 };
 
-async function fetchJson<T>(url: string): Promise<T> {
+type FetchResult<T> = {
+    ok: boolean;
+    status: number;
+    data: T | null;
+};
+
+async function fetchWithStatus<T>(url: string): Promise<FetchResult<T>> {
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-        throw new Error(`Request failed (${res.status})`);
-    }
-    return res.json();
+    const data = (await res.json().catch(() => null)) as T | null;
+    return { ok: res.ok, status: res.status, data };
+}
+
+function getProjectError(status: number) {
+    if (status === 400) return "projectId required";
+    if (status === 404) return "Project not found for this org";
+    return "Failed to load project-scoped data";
 }
 
 function parseStageConfigs(input: unknown) {
@@ -84,37 +94,108 @@ export function AdminConsoleClient() {
     const [recommendationsNotAvailable, setRecommendationsNotAvailable] = useState(false);
     const [jobs, setJobs] = useState<Job[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [overviewError, setOverviewError] = useState<string | null>(null);
+    const [aiConfigError, setAiConfigError] = useState<string | null>(null);
+    const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+    const [jobsError, setJobsError] = useState<string | null>(null);
 
     const [providerFilter, setProviderFilter] = useState("all");
     const [statusFilter, setStatusFilter] = useState("all");
 
     useEffect(() => {
-        fetchJson<{ projects: Project[] }>("/api/admin/projects")
-            .then((data) => setProjects(data.projects))
+        fetchWithStatus<{ projects: Project[] }>("/api/admin/projects")
+            .then((result) => {
+                if (result.ok && result.data) {
+                    setProjects(result.data.projects);
+                    return;
+                }
+                setError(result.status === 403 ? "Forbidden" : "Failed to load projects");
+            })
             .catch((err) => setError(err instanceof Error ? err.message : "Failed to load projects"));
     }, []);
 
     useEffect(() => {
         const query = selectedProjectId ? `?projectId=${selectedProjectId}` : "";
-        Promise.all([
-            fetchJson<Overview>(`/api/admin/overview${query}`),
-            fetchJson<AiConfig>(`/api/admin/ai-config${query}`),
-            fetchJson<{ models: Model[]; notAvailable?: boolean }>(`/api/admin/models`),
-            fetchJson<{ merged: Recommendation[]; notAvailable?: boolean }>(`/api/admin/recommendations${query}`),
-            fetchJson<{ jobs: Job[] }>(`/api/admin/jobs${query}`),
-        ])
-            .then(([overviewData, aiData, modelsData, recData, jobsData]) => {
-                setError(null);
-                setOverview(overviewData);
-                setAiConfig(aiData);
-                setModels(modelsData.models);
-                setModelsNotAvailable(!!modelsData.notAvailable);
-                setRecommendations(recData.merged);
-                setRecommendationsNotAvailable(!!recData.notAvailable);
-                setJobs(jobsData.jobs);
+
+        fetchWithStatus<Overview>(`/api/admin/overview${query}`).then((result) => {
+            if (result.ok && result.data) {
+                setOverview(result.data);
+                setOverviewError(null);
+            } else {
+                setOverview(null);
+                setOverviewError(result.status === 404 ? "Project not found for this org" : "Failed to load overview");
+            }
+        }).catch((err) => {
+            setOverview(null);
+            setOverviewError(err instanceof Error ? err.message : "Failed to load overview");
+        });
+
+        fetchWithStatus<{ models: Model[]; notAvailable?: boolean }>("/api/admin/models")
+            .then((result) => {
+                if (result.ok && result.data) {
+                    setModels(result.data.models);
+                    setModelsNotAvailable(!!result.data.notAvailable);
+                    return;
+                }
+                setModels([]);
+                setModelsNotAvailable(false);
+                setError(result.status === 403 ? "Forbidden" : "Failed to load models");
+            })
+            .catch((err) => setError(err instanceof Error ? err.message : "Failed to load models"));
+
+        if (!selectedProjectId) {
+            setAiConfig(null);
+            setRecommendations([]);
+            setJobs([]);
+            setAiConfigError("Select a project");
+            setRecommendationsError("Select a project");
+            setJobsError("Select a project");
+            return;
+        }
+
+        fetchWithStatus<AiConfig>(`/api/admin/ai-config${query}`).then((result) => {
+            if (result.ok && result.data) {
+                setAiConfig(result.data);
+                setAiConfigError(null);
+            } else {
+                setAiConfig(null);
+                setAiConfigError(getProjectError(result.status));
+            }
+        }).catch((err) => {
+            setAiConfig(null);
+            setAiConfigError(err instanceof Error ? err.message : "Failed to load AI config");
+        });
+
+        fetchWithStatus<{ merged: Recommendation[]; notAvailable?: boolean }>(`/api/admin/recommendations${query}`)
+            .then((result) => {
+                if (result.ok && result.data) {
+                    setRecommendations(result.data.merged);
+                    setRecommendationsNotAvailable(!!result.data.notAvailable);
+                    setRecommendationsError(null);
+                } else {
+                    setRecommendations([]);
+                    setRecommendationsNotAvailable(false);
+                    setRecommendationsError(getProjectError(result.status));
+                }
             })
             .catch((err) => {
-                setError(err instanceof Error ? err.message : "Failed to load admin data");
+                setRecommendations([]);
+                setRecommendationsError(err instanceof Error ? err.message : "Failed to load recommendations");
+            });
+
+        fetchWithStatus<{ jobs: Job[] }>(`/api/admin/jobs${query}`)
+            .then((result) => {
+                if (result.ok && result.data) {
+                    setJobs(result.data.jobs);
+                    setJobsError(null);
+                } else {
+                    setJobs([]);
+                    setJobsError(getProjectError(result.status));
+                }
+            })
+            .catch((err) => {
+                setJobs([]);
+                setJobsError(err instanceof Error ? err.message : "Failed to load jobs");
             });
     }, [selectedProjectId]);
 
@@ -175,9 +256,9 @@ export function AdminConsoleClient() {
                     onChange={handleProjectChange}
                 />
 
-                {error && (
+                {(error || overviewError) && (
                     <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-                        {error}
+                        {error ?? overviewError}
                     </div>
                 )}
             </header>
@@ -188,7 +269,9 @@ export function AdminConsoleClient() {
                 <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded border border-slate-800 bg-slate-900 p-4">
                         <h3 className="text-sm font-semibold uppercase text-slate-400">Providers</h3>
-                        {aiConfig ? (
+                        {aiConfigError ? (
+                            <p className="mt-3 text-sm text-slate-500">{aiConfigError}</p>
+                        ) : aiConfig ? (
                             <div className="mt-3 space-y-2 text-sm">
                                 {Object.entries(aiConfig.org.providerFlags).map(([key, value]) => (
                                     <div key={key} className="flex items-center justify-between">
@@ -209,7 +292,9 @@ export function AdminConsoleClient() {
                         <div className="mt-3 space-y-3 text-sm">
                             <div>
                                 <div className="text-slate-300">Organization</div>
-                                {aiConfig?.org.available ? (
+                                {aiConfigError ? (
+                                    <p className="text-slate-500">{aiConfigError}</p>
+                                ) : aiConfig?.org.available ? (
                                     <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-950 p-3 text-xs text-slate-200">
                                         {JSON.stringify(aiConfig.org.stageConfigs, null, 2)}
                                     </pre>
@@ -220,7 +305,9 @@ export function AdminConsoleClient() {
                             {selectedProjectId && (
                                 <div>
                                     <div className="text-slate-300">Project override</div>
-                                    {aiConfig?.project?.available ? (
+                                    {aiConfigError ? (
+                                        <p className="text-slate-500">{aiConfigError}</p>
+                                    ) : aiConfig?.project?.available ? (
                                         <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-950 p-3 text-xs text-slate-200">
                                             {JSON.stringify(aiConfig.project.stageConfigs, null, 2)}
                                         </pre>
@@ -301,7 +388,9 @@ export function AdminConsoleClient() {
 
                 <div className="rounded border border-slate-800 bg-slate-900 p-4">
                     <h3 className="text-sm font-semibold uppercase text-slate-400">Stage Model Recommendations</h3>
-                    {recommendationsNotAvailable ? (
+                    {recommendationsError ? (
+                        <p className="mt-3 text-sm text-slate-500">{recommendationsError}</p>
+                    ) : recommendationsNotAvailable ? (
                         <p className="mt-3 text-sm text-slate-500">Recommendations not available in this schema.</p>
                     ) : (
                         <div className="mt-3 overflow-auto">
@@ -341,6 +430,9 @@ export function AdminConsoleClient() {
                 <h2 className="text-lg font-semibold">Ops</h2>
                 <div className="rounded border border-slate-800 bg-slate-900 p-4">
                     <h3 className="text-sm font-semibold uppercase text-slate-400">Recent Jobs</h3>
+                    {jobsError && (
+                        <p className="mt-3 text-sm text-slate-500">{jobsError}</p>
+                    )}
                     <div className="mt-3 overflow-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="text-xs uppercase text-slate-500">
