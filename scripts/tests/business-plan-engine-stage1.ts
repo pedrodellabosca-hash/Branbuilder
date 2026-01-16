@@ -73,6 +73,18 @@ async function main() {
             "Seeded section count should match template"
         );
 
+        await prisma.businessPlanSection.update({
+            where: {
+                businessPlanId_key: {
+                    businessPlanId,
+                    key: BUSINESS_PLAN_TEMPLATE_KEYS[0],
+                },
+            },
+            data: {
+                content: { text: "v1" },
+            },
+        });
+
         try {
             await businessPlanSectionService.seedTemplate(businessPlanId);
             assert.fail("Expected SectionConflictError on duplicate seed");
@@ -90,6 +102,35 @@ async function main() {
             sectionCount,
             BUSINESS_PLAN_TEMPLATE_KEYS.length,
             "Duplicate seed should not partially write any sections"
+        );
+
+        const secondBusinessPlanId = second.businessPlan.id;
+        await businessPlanSectionService.seedTemplate(secondBusinessPlanId);
+        await prisma.businessPlanSection.update({
+            where: {
+                businessPlanId_key: {
+                    businessPlanId: secondBusinessPlanId,
+                    key: BUSINESS_PLAN_TEMPLATE_KEYS[0],
+                },
+            },
+            data: {
+                content: { text: "v2" },
+            },
+        });
+
+        const diff = await ventureSnapshotService.compareSnapshots(
+            project.id,
+            first.snapshot.version,
+            second.snapshot.version
+        );
+        assert.ok(diff, "Snapshot diff should be returned");
+        assert.ok(
+            diff.sections.changed.some((item) => item.key === BUSINESS_PLAN_TEMPLATE_KEYS[0]),
+            "Changed should include the modified key"
+        );
+        assert.ok(
+            diff.sections.unchanged.length > 0,
+            "Unchanged should include at least one key"
         );
 
         console.log("Business Plan Engine Stage 1 tests: OK");
