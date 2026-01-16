@@ -151,6 +151,30 @@ enum AuditAction {
   SSO_CONFIGURED
 }
 
+enum BusinessPlanStatus {
+  DRAFT
+  APPROVED
+  ARCHIVED
+}
+
+enum BusinessPlanSectionKey {
+  EXECUTIVE_SUMMARY
+  PROBLEM
+  SOLUTION
+  MARKET
+  COMPETITION
+  GO_TO_MARKET
+  OPERATIONS
+  FINANCIALS
+  RISKS
+}
+
+enum BusinessPlanEventType {
+  CREATED
+  SECTION_UPDATED
+  STATUS_CHANGED
+}
+
 // =============================================================================
 // CORE MULTI-TENANT
 // =============================================================================
@@ -250,6 +274,8 @@ model Project {
   brandCore   BrandCoreProfile?
   stages      Stage[]
   outputs     Output[]
+  ventureSnapshots VentureSnapshot[]
+  businessPlans BusinessPlan[]
   comments    Comment[]
   jobs        Job[]
   
@@ -274,6 +300,18 @@ model ProjectMember {
   @@unique([projectId, userId])
   @@index([projectId])
   @@index([userId])
+}
+
+model VentureSnapshot {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime @default(now())
+
+  businessPlans BusinessPlan[]
+
+  @@index([projectId])
 }
 
 // =============================================================================
@@ -396,6 +434,53 @@ model OutputVersion {
   @@unique([outputId, version])
   @@index([outputId])
   @@index([status])
+}
+
+model BusinessPlan {
+  id               String             @id @default(cuid())
+  projectId        String
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceSnapshotId String
+  sourceSnapshot   VentureSnapshot    @relation(fields: [sourceSnapshotId], references: [id], onDelete: Restrict)
+  version          Int                @default(1)
+  status           BusinessPlanStatus @default(DRAFT)
+
+  sections         BusinessPlanSection[]
+  events           BusinessPlanEvent[]
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([projectId, version])
+  @@index([projectId])
+  @@index([sourceSnapshotId])
+}
+
+model BusinessPlanSection {
+  id             String               @id @default(cuid())
+  businessPlanId String
+  businessPlan   BusinessPlan         @relation(fields: [businessPlanId], references: [id], onDelete: Cascade)
+  key            BusinessPlanSectionKey
+  title          String
+  content        Json?
+
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([businessPlanId])
+  @@index([key])
+}
+
+model BusinessPlanEvent {
+  id             String              @id @default(cuid())
+  businessPlanId String
+  businessPlan   BusinessPlan        @relation(fields: [businessPlanId], references: [id], onDelete: Cascade)
+  type           BusinessPlanEventType
+  payload        Json?
+  createdAt      DateTime            @default(now())
+
+  @@index([businessPlanId])
+  @@index([type])
 }
 
 // =============================================================================
