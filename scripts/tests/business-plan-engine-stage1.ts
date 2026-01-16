@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
 import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS } from "@/lib/business-plan/BusinessPlanSectionService";
 import { businessPlanService } from "@/lib/business-plan/BusinessPlanService";
+import { businessPlanExportService } from "@/lib/business-plan/BusinessPlanExportService";
 
 const TEST_PREFIX = `test_bp_stage1_${Date.now()}`;
 
@@ -166,6 +167,14 @@ async function main() {
             [...BUSINESS_PLAN_TEMPLATE_KEYS],
             "Seeded document should include template keys"
         );
+
+        const pdfBuffer = await businessPlanExportService.exportPdf(document);
+        assert.ok(pdfBuffer.length > 500, "PDF buffer should be non-trivial");
+        assert.equal(pdfBuffer.subarray(0, 4).toString(), "%PDF", "PDF magic header");
+
+        const docxBuffer = await businessPlanExportService.exportDocx(document);
+        assert.ok(docxBuffer.length > 500, "DOCX buffer should be non-trivial");
+        assert.equal(docxBuffer.subarray(0, 2).toString(), "PK", "DOCX zip header");
 
         console.log("Business Plan Engine Stage 1 tests: OK");
     } finally {

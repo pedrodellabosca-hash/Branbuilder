@@ -51,6 +51,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "docx": "^9.5.1",
     "jose": "^6.1.3",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
@@ -58,12 +59,12 @@
     "prisma": "^6.19.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "yazl": "^2.5.1",
     "stripe": "^20.1.0",
     "svix": "^1.82.0",
     "tailwind-merge": "^3.4.0",
     "tsx": "^4.21.0",
     "uuid": "^13.0.0",
+    "yazl": "^2.5.1",
     "zod": "^4.2.1"
   },
   "devDependencies": {
