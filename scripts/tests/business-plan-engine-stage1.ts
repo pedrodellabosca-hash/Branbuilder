@@ -169,11 +169,11 @@ async function main() {
         );
 
         const pdfBuffer = await businessPlanExportService.exportPdf(document);
-        assert.ok(pdfBuffer.length > 500, "PDF buffer should be non-trivial");
+        assert.ok(pdfBuffer.length > 1500, "PDF buffer should be non-trivial");
         assert.equal(pdfBuffer.subarray(0, 4).toString(), "%PDF", "PDF magic header");
 
         const docxBuffer = await businessPlanExportService.exportDocx(document);
-        assert.ok(docxBuffer.length > 500, "DOCX buffer should be non-trivial");
+        assert.ok(docxBuffer.length > 1500, "DOCX buffer should be non-trivial");
         assert.equal(docxBuffer.subarray(0, 2).toString(), "PK", "DOCX zip header");
 
         console.log("Business Plan Engine Stage 1 tests: OK");
