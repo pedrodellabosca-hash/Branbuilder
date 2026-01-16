@@ -118,7 +118,11 @@ export async function POST(
         } catch (error) {
             lastError = error;
             if (uploadKey) {
-                await storage.delete(uploadKey);
+                try {
+                    await storage.delete(uploadKey);
+                } catch (deleteError) {
+                    console.warn("Failed to cleanup venture export upload", deleteError);
+                }
             }
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
                 continue;
@@ -127,8 +131,5 @@ export async function POST(
         }
     }
 
-    return NextResponse.json(
-        { error: "Version conflict while saving export", detail: String(lastError ?? "") },
-        { status: 409 }
-    );
+    return NextResponse.json({ error: "Version conflict while saving export" }, { status: 409 });
 }
