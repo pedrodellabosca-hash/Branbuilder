@@ -20,9 +20,13 @@ function getBearerToken(request: Request) {
 }
 
 export async function getApiAuth(request: Request): Promise<ApiAuthContext | null> {
-    const { userId, orgId } = await auth();
-    if (userId && orgId) {
-        return { userId, orgId };
+    try {
+        const { userId, orgId } = await auth();
+        if (userId && orgId) {
+            return { userId, orgId };
+        }
+    } catch {
+        // Swallow auth errors to allow E2E fallback in dev/test.
     }
 
     if (!canUseE2EAuth()) {
