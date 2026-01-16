@@ -308,9 +308,12 @@ model VentureSnapshot {
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   data      Json
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
 
   businessPlans BusinessPlan[]
 
+  @@unique([projectId, version])
   @@index([projectId])
 }
 
@@ -467,6 +470,7 @@ model BusinessPlanSection {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
+  @@unique([businessPlanId, key])
   @@index([businessPlanId])
   @@index([key])
 }
