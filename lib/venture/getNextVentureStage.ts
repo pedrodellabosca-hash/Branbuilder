@@ -1,4 +1,5 @@
-import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
+import { getVentureSnapshot, type VentureSnapshot } from "@/lib/venture/getVentureSnapshot";
+import { getVentureFundamentosStatusFromSnapshot } from "@/lib/venture/getVentureFundamentosStatus";
 
 const VENTURE_ORDER = [
     "venture_intake",
@@ -15,12 +16,14 @@ type NextStageResult = {
     doneApproved: boolean;
 };
 
-export async function getNextVentureStage(projectId: string): Promise<NextStageResult> {
-    const snapshot = await getVentureSnapshot(projectId);
-    const stages = snapshot.stages;
+export async function getNextVentureStage(
+    projectId: string,
+    snapshot?: VentureSnapshot
+): Promise<NextStageResult> {
+    const resolvedSnapshot = snapshot ?? (await getVentureSnapshot(projectId));
+    const stages = resolvedSnapshot.stages;
 
-    const done = VENTURE_ORDER.every((key) => stages[key].approved || stages[key].hasOutput);
-    const doneApproved = VENTURE_ORDER.every((key) => stages[key].approved);
+    const status = getVentureFundamentosStatusFromSnapshot(resolvedSnapshot);
 
     const nextStageKey = VENTURE_ORDER.find(
         (key) => !(stages[key].approved || stages[key].hasOutput)
@@ -28,7 +31,7 @@ export async function getNextVentureStage(projectId: string): Promise<NextStageR
 
     return {
         nextStageKey,
-        done,
-        doneApproved,
+        done: status.done,
+        doneApproved: status.approved,
     };
 }

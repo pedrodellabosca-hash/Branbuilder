@@ -15,7 +15,7 @@ type VentureStageSnapshot = {
     latestContent?: unknown;
 };
 
-type VentureSnapshot = {
+export type VentureSnapshot = {
     stages: Record<VentureStageKey, VentureStageSnapshot>;
     snapshot: {
         problem?: string;

@@ -15,6 +15,8 @@ import {
 import { prisma } from "@/lib/db";
 import { ProjectFiles } from "@/components/project/ProjectFiles";
 import { getNextVentureStage } from "@/lib/venture/getNextVentureStage";
+import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
+import { getVentureFundamentosStatusFromSnapshot } from "@/lib/venture/getVentureFundamentosStatus";
 import { VentureExportActions } from "@/components/venture/VentureExportActions";
 
 // Force dynamic rendering
@@ -108,7 +110,14 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         }))
         .filter((entry) => entry.stage);
 
-    const ventureNext = ventureStages.length > 0 ? await getNextVentureStage(project.id) : null;
+    const ventureSnapshot =
+        ventureStages.length > 0 ? await getVentureSnapshot(project.id) : null;
+    const ventureStatus = ventureSnapshot
+        ? getVentureFundamentosStatusFromSnapshot(ventureSnapshot)
+        : null;
+    const ventureNext = ventureSnapshot
+        ? await getNextVentureStage(project.id, ventureSnapshot)
+        : null;
 
     const statusLabels: Record<string, string> = {
         NOT_STARTED: "No iniciado",
@@ -202,7 +211,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                             </h2>
                         </div>
                         <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center gap-3">
-                            {ventureNext?.nextStageKey ? (
+                            {ventureStatus && !ventureStatus.done ? (
                                 <Link
                                     href={`/projects/${project.id}/stages/${ventureNext.nextStageKey}`}
                                     className="inline-flex items-center gap-2 rounded bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900"
@@ -211,7 +220,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                 </Link>
                             ) : (
                                 <span
-                                    className={`text-xs font-semibold px-3 py-1.5 rounded ${ventureNext?.doneApproved
+                                    className={`text-xs font-semibold px-3 py-1.5 rounded ${ventureStatus?.approved
                                         ? "bg-green-500/10 text-green-400"
                                         : "bg-amber-500/10 text-amber-300"
                                         }`}
