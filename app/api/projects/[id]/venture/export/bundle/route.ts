@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { getApiAuth } from "@/lib/auth/getApiAuth";
 import { buildVentureExportMarkdown } from "@/lib/venture/renderVentureExport";
 import {
     extractMarkdownMeta,
@@ -48,12 +48,13 @@ export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const { userId, orgId } = await auth();
+    const authContext = await getApiAuth(request);
     const { id: projectId } = await params;
 
-    if (!userId || !orgId) {
-        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (!authContext) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const { userId, orgId } = authContext;
 
     const org = await prisma.organization.findUnique({
         where: { clerkOrgId: orgId },
