@@ -4,6 +4,7 @@ import { validateE2EToken } from "@/lib/auth/e2e-token";
 type ApiAuthContext = {
     userId: string;
     orgId: string;
+    source: "clerk" | "e2e";
 };
 
 function canUseE2EAuth() {
@@ -24,7 +25,7 @@ export async function getApiAuth(request: Request): Promise<ApiAuthContext | nul
         try {
             const { userId, orgId } = await auth();
             if (userId && orgId) {
-                return { userId, orgId };
+                return { userId, orgId, source: "clerk" };
             }
         } catch {
             return null;
@@ -36,7 +37,7 @@ export async function getApiAuth(request: Request): Promise<ApiAuthContext | nul
     if (token) {
         const result = await validateE2EToken(token);
         if (result.valid) {
-            return { userId: result.userId, orgId: result.orgId };
+            return { userId: result.userId, orgId: result.orgId, source: "e2e" };
         }
         return null;
     }
@@ -44,7 +45,7 @@ export async function getApiAuth(request: Request): Promise<ApiAuthContext | nul
     try {
         const { userId, orgId } = await auth();
         if (userId && orgId) {
-            return { userId, orgId };
+            return { userId, orgId, source: "clerk" };
         }
     } catch {
         return null;

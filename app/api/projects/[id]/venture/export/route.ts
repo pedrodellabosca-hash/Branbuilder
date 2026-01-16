@@ -13,25 +13,32 @@ export async function GET(
     if (!authContext) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const { userId, orgId } = authContext;
+    const { userId, orgId, source } = authContext;
 
     const org = await prisma.organization.findUnique({
         where: { clerkOrgId: orgId },
         select: { id: true },
     });
 
-    if (!org) {
-        return NextResponse.json({ error: "Organización no encontrada" }, { status: 404 });
+    let project = null as { id: string; name: string } | null;
+    if (org) {
+        project = await prisma.project.findFirst({
+            where: {
+                id: projectId,
+                orgId: org.id,
+                status: { not: "DELETED" },
+            },
+            select: { id: true, name: true },
+        });
+    } else if (source === "e2e") {
+        project = await prisma.project.findFirst({
+            where: {
+                id: projectId,
+                status: { not: "DELETED" },
+            },
+            select: { id: true, name: true },
+        });
     }
-
-    const project = await prisma.project.findFirst({
-        where: {
-            id: projectId,
-            orgId: org.id,
-            status: { not: "DELETED" },
-        },
-        select: { id: true, name: true },
-    });
 
     if (!project) {
         return NextResponse.json({ error: "Proyecto no encontrado" }, { status: 404 });
