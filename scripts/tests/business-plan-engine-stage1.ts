@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { prisma } from "@/lib/db";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
 import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS } from "@/lib/business-plan/BusinessPlanSectionService";
+import { businessPlanService } from "@/lib/business-plan/BusinessPlanService";
 
 const TEST_PREFIX = `test_bp_stage1_${Date.now()}`;
 
@@ -131,6 +132,24 @@ async function main() {
         assert.ok(
             diff.sections.unchanged.length > 0,
             "Unchanged should include at least one key"
+        );
+
+        const document = await businessPlanService.getDocument(businessPlanId, org.id);
+        assert.ok(document, "Document should be returned");
+        assert.equal(
+            document.sections.length,
+            BUSINESS_PLAN_TEMPLATE_KEYS.length,
+            "Document sections should match template length"
+        );
+        assert.deepEqual(
+            document.sections.map((section) => section.key),
+            [...BUSINESS_PLAN_TEMPLATE_KEYS],
+            "Document sections should follow template order"
+        );
+        assert.deepEqual(
+            document.sections[0].content,
+            { text: "v1" },
+            "Document should reflect updated content"
         );
 
         console.log("Business Plan Engine Stage 1 tests: OK");

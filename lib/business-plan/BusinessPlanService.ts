@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { BUSINESS_PLAN_TEMPLATE_KEYS } from "@/lib/business-plan/BusinessPlanSectionService";
 
 type CreateBusinessPlanParams = {
     projectId: string;
@@ -42,6 +43,59 @@ export class BusinessPlanService {
                 sourceSnapshotId: true,
             },
         });
+    }
+
+    async getDocument(businessPlanId: string, orgId: string) {
+        const plan = await prisma.businessPlan.findFirst({
+            where: {
+                id: businessPlanId,
+                project: { orgId },
+            },
+            include: {
+                sourceSnapshot: {
+                    select: { version: true },
+                },
+                sections: {
+                    select: { key: true, title: true, content: true },
+                },
+            },
+        });
+
+        if (!plan) {
+            return null;
+        }
+
+        const sectionMap = new Map(
+            plan.sections.map((section) => [
+                section.key,
+                {
+                    key: section.key,
+                    title: section.title,
+                    content: section.content ?? {},
+                },
+            ])
+        );
+
+        const orderedSections = BUSINESS_PLAN_TEMPLATE_KEYS.map((key) => {
+            const existing = sectionMap.get(key);
+            if (existing) {
+                return existing;
+            }
+            return {
+                key,
+                title: key,
+                content: {},
+            };
+        });
+
+        return {
+            businessPlanId: plan.id,
+            projectId: plan.projectId,
+            ventureSnapshotId: plan.sourceSnapshotId,
+            snapshotVersion: plan.sourceSnapshot.version,
+            updatedAt: plan.updatedAt,
+            sections: orderedSections,
+        };
     }
 }
 
