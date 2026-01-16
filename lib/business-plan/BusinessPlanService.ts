@@ -52,6 +52,9 @@ export class BusinessPlanService {
                 project: { orgId },
             },
             include: {
+                project: {
+                    select: { name: true },
+                },
                 sourceSnapshot: {
                     select: { version: true },
                 },
@@ -91,6 +94,7 @@ export class BusinessPlanService {
         return {
             businessPlanId: plan.id,
             projectId: plan.projectId,
+            projectName: plan.project.name ?? null,
             ventureSnapshotId: plan.sourceSnapshotId,
             snapshotVersion: plan.sourceSnapshot.version,
             updatedAt: plan.updatedAt,

@@ -35,7 +35,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         }
 
         const buffer = await businessPlanExportService.exportDocx(document);
-        const filename = `business-plan_${document.businessPlanId}_v${document.snapshotVersion}.docx`;
+        const dateTag = new Date().toISOString().slice(0, 10);
+        const filename = `business-plan_${document.businessPlanId}_v${document.snapshotVersion}_${dateTag}.docx`;
 
         return new NextResponse(buffer, {
             headers: {
