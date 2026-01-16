@@ -6,6 +6,18 @@ export type CreateSectionInput = {
     content: Record<string, unknown>;
 };
 
+export const BUSINESS_PLAN_TEMPLATE_KEYS = [
+    BusinessPlanSectionKey.EXECUTIVE_SUMMARY,
+    BusinessPlanSectionKey.PROBLEM,
+    BusinessPlanSectionKey.SOLUTION,
+    BusinessPlanSectionKey.MARKET,
+    BusinessPlanSectionKey.COMPETITION,
+    BusinessPlanSectionKey.GO_TO_MARKET,
+    BusinessPlanSectionKey.OPERATIONS,
+    BusinessPlanSectionKey.FINANCIALS,
+    BusinessPlanSectionKey.RISKS,
+] as const;
+
 export class SectionConflictError extends Error {
     code = "SECTION_CONFLICT" as const;
 }
@@ -63,6 +75,14 @@ export class BusinessPlanSectionService {
             }
             throw error;
         });
+    }
+
+    async seedTemplate(businessPlanId: string) {
+        const sections = BUSINESS_PLAN_TEMPLATE_KEYS.map((key) => ({
+            key,
+            content: {},
+        }));
+        return this.createSections(businessPlanId, sections);
     }
 }
 

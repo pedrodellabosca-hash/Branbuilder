@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { prisma } from "@/lib/db";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
-import { businessPlanSectionService, SectionConflictError } from "@/lib/business-plan/BusinessPlanSectionService";
-import { BusinessPlanSectionKey } from "@prisma/client";
+import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS } from "@/lib/business-plan/BusinessPlanSectionService";
 
 const TEST_PREFIX = `test_bp_stage1_${Date.now()}`;
 
@@ -67,22 +66,20 @@ async function main() {
             "Second BusinessPlan should link to snapshot"
         );
 
-        const createdSections = await businessPlanSectionService.createSections(businessPlanId, [
-            { key: BusinessPlanSectionKey.EXECUTIVE_SUMMARY, content: { text: "ok" } },
-            { key: BusinessPlanSectionKey.PROBLEM, content: { text: "ok" } },
-        ]);
-        assert.equal(createdSections.length, 2, "Should create two sections");
+        const seeded = await businessPlanSectionService.seedTemplate(businessPlanId);
+        assert.equal(
+            seeded.length,
+            BUSINESS_PLAN_TEMPLATE_KEYS.length,
+            "Seeded section count should match template"
+        );
 
         try {
-            await businessPlanSectionService.createSections(businessPlanId, [
-                { key: BusinessPlanSectionKey.PROBLEM, content: { text: "dup" } },
-                { key: BusinessPlanSectionKey.SOLUTION, content: { text: "new" } },
-            ]);
-            assert.fail("Expected SectionConflictError for duplicate key");
+            await businessPlanSectionService.seedTemplate(businessPlanId);
+            assert.fail("Expected SectionConflictError on duplicate seed");
         } catch (error) {
             assert.ok(
                 error instanceof SectionConflictError,
-                "Expected SectionConflictError on duplicate key"
+                "Expected SectionConflictError on duplicate seed"
             );
         }
 
@@ -91,8 +88,8 @@ async function main() {
         });
         assert.equal(
             sectionCount,
-            2,
-            "Duplicate insert should not partially write any sections"
+            BUSINESS_PLAN_TEMPLATE_KEYS.length,
+            "Duplicate seed should not partially write any sections"
         );
 
         console.log("Business Plan Engine Stage 1 tests: OK");
