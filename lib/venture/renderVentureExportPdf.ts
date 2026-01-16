@@ -1,4 +1,7 @@
-import PDFDocument from "pdfkit";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const PDFDocument = require("pdfkit/js/pdfkit.js");
 
 const PAGE_MARGIN = 50;
 

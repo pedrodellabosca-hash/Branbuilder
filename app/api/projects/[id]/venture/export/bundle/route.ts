@@ -8,6 +8,8 @@ import {
 } from "@/lib/venture/renderVentureExportPdf";
 import yazl from "yazl";
 
+export const runtime = "nodejs";
+
 function buildReadme(projectName: string, exportDate: string | null, isTruncated: boolean) {
     const lines: string[] = [];
     lines.push("BrandForge - Fundamentos del negocio");

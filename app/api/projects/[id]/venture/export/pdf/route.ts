@@ -7,6 +7,8 @@ import {
     renderVentureExportPdf,
 } from "@/lib/venture/renderVentureExportPdf";
 
+export const runtime = "nodejs";
+
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
