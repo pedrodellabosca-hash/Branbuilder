@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { BusinessPlanService } from "@/lib/business-plan/BusinessPlanService";
+import { BusinessPlanSectionService, SectionConflictError } from "@/lib/business-plan/BusinessPlanSectionService";
 
 export type VentureSnapshotData = {
     schemaVersion: 1;
@@ -11,8 +12,13 @@ export type VentureSnapshotData = {
 
 export class VentureSnapshotService {
     private businessPlanService = new BusinessPlanService();
+    private sectionService = new BusinessPlanSectionService();
 
     async createSnapshot(projectId: string) {
+        return this.createSnapshotWithSeed(projectId, false);
+    }
+
+    async createSnapshotWithSeed(projectId: string, seedTemplate: boolean) {
         return prisma.$transaction(async (tx) => {
             const latest = await tx.ventureSnapshot.findFirst({
                 where: { projectId },
@@ -44,6 +50,10 @@ export class VentureSnapshotService {
                 sourceSnapshotId: snapshot.id,
                 version: nextVersion,
             });
+
+            if (seedTemplate) {
+                await this.sectionService.seedTemplateWithTx(tx, businessPlan.id);
+            }
 
             return { snapshot, businessPlan };
         });

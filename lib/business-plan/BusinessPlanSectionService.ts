@@ -38,35 +38,9 @@ export class BusinessPlanSectionService {
             throw new InvalidSectionError("Duplicate keys in request");
         }
 
-        return prisma.$transaction(async (tx) => {
-            const existing = await tx.businessPlanSection.findMany({
-                where: {
-                    businessPlanId,
-                    key: { in: keys },
-                },
-                select: { key: true },
-            });
-
-            if (existing.length > 0) {
-                throw new SectionConflictError("Section already exists");
-            }
-
-            const created = await Promise.all(
-                sections.map((section) =>
-                    tx.businessPlanSection.create({
-                        data: {
-                            businessPlanId,
-                            key: section.key,
-                            title: section.key,
-                            content: section.content,
-                        },
-                        select: { id: true, key: true },
-                    })
-                )
-            );
-
-            return created;
-        }).catch((error) => {
+        return prisma.$transaction((tx) =>
+            this.createSectionsWithTx(tx, businessPlanId, sections)
+        ).catch((error) => {
             if (
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === "P2002"
@@ -83,6 +57,58 @@ export class BusinessPlanSectionService {
             content: {},
         }));
         return this.createSections(businessPlanId, sections);
+    }
+
+    async seedTemplateWithTx(tx: Prisma.TransactionClient, businessPlanId: string) {
+        const sections = BUSINESS_PLAN_TEMPLATE_KEYS.map((key) => ({
+            key,
+            content: {},
+        }));
+        return this.createSectionsWithTx(tx, businessPlanId, sections);
+    }
+
+    private async createSectionsWithTx(
+        tx: Prisma.TransactionClient,
+        businessPlanId: string,
+        sections: CreateSectionInput[]
+    ) {
+        if (!sections.length) {
+            throw new InvalidSectionError("Sections required");
+        }
+
+        const keys = sections.map((section) => section.key);
+        const uniqueKeys = new Set(keys);
+        if (uniqueKeys.size !== keys.length) {
+            throw new InvalidSectionError("Duplicate keys in request");
+        }
+
+        const existing = await tx.businessPlanSection.findMany({
+            where: {
+                businessPlanId,
+                key: { in: keys },
+            },
+            select: { key: true },
+        });
+
+        if (existing.length > 0) {
+            throw new SectionConflictError("Section already exists");
+        }
+
+        const created = await Promise.all(
+            sections.map((section) =>
+                tx.businessPlanSection.create({
+                    data: {
+                        businessPlanId,
+                        key: section.key,
+                        title: section.key,
+                        content: section.content,
+                    },
+                    select: { id: true, key: true },
+                })
+            )
+        );
+
+        return created;
     }
 }
 

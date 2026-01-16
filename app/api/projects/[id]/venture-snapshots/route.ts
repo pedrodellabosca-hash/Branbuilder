@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
-import { businessPlanService } from "@/lib/business-plan/BusinessPlanService";
+import { SectionConflictError } from "@/lib/business-plan/BusinessPlanSectionService";
 import { Prisma } from "@prisma/client";
 
 interface RouteParams {
@@ -36,7 +36,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             return NextResponse.json({ error: "Proyecto no encontrado" }, { status: 404 });
         }
 
-        const { snapshot, businessPlan } = await ventureSnapshotService.createSnapshot(projectId);
+        let body: unknown = null;
+        try {
+            body = await request.json();
+        } catch {
+            body = {};
+        }
+        const seedTemplate = Boolean((body as { seedTemplate?: boolean } | null)?.seedTemplate);
+
+        const { snapshot, businessPlan } = await ventureSnapshotService.createSnapshotWithSeed(
+            projectId,
+            seedTemplate
+        );
 
         return NextResponse.json(
             {
@@ -50,6 +61,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             { status: 201 }
         );
     } catch (error) {
+        if (error instanceof SectionConflictError) {
+            return NextResponse.json({ error: "Sección ya existe" }, { status: 409 });
+        }
         if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
             error.code === "P2002"

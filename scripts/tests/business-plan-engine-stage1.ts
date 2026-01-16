@@ -152,6 +152,21 @@ async function main() {
             "Document should reflect updated content"
         );
 
+        const seededSnapshot = await ventureSnapshotService.createSnapshotWithSeed(
+            project.id,
+            true
+        );
+        const seededDocument = await businessPlanService.getDocument(
+            seededSnapshot.businessPlan.id,
+            org.id
+        );
+        assert.ok(seededDocument, "Seeded document should be returned");
+        assert.deepEqual(
+            seededDocument.sections.map((section) => section.key),
+            [...BUSINESS_PLAN_TEMPLATE_KEYS],
+            "Seeded document should include template keys"
+        );
+
         console.log("Business Plan Engine Stage 1 tests: OK");
     } finally {
         if (projectId) {
