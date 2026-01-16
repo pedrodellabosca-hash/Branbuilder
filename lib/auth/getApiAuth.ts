@@ -20,24 +20,35 @@ function getBearerToken(request: Request) {
 }
 
 export async function getApiAuth(request: Request): Promise<ApiAuthContext | null> {
+    if (!canUseE2EAuth()) {
+        try {
+            const { userId, orgId } = await auth();
+            if (userId && orgId) {
+                return { userId, orgId };
+            }
+        } catch {
+            return null;
+        }
+        return null;
+    }
+
+    const token = getBearerToken(request);
+    if (token) {
+        const result = await validateE2EToken(token);
+        if (result.valid) {
+            return { userId: result.userId, orgId: result.orgId };
+        }
+        return null;
+    }
+
     try {
         const { userId, orgId } = await auth();
         if (userId && orgId) {
             return { userId, orgId };
         }
     } catch {
-        // Swallow auth errors to allow E2E fallback in dev/test.
-    }
-
-    if (!canUseE2EAuth()) {
         return null;
     }
 
-    const token = getBearerToken(request);
-    if (!token) return null;
-
-    const result = await validateE2EToken(token);
-    if (!result.valid) return null;
-
-    return { userId: result.userId, orgId: result.orgId };
+    return null;
 }
