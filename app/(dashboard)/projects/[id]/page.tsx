@@ -15,6 +15,7 @@ import {
 import { prisma } from "@/lib/db";
 import { ProjectFiles } from "@/components/project/ProjectFiles";
 import { getNextVentureStage } from "@/lib/venture/getNextVentureStage";
+import { VentureExportActions } from "@/components/venture/VentureExportActions";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -224,6 +225,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                             >
                                 Exportar Fundamentos (MD)
                             </Link>
+                            <VentureExportActions projectId={project.id} />
                         </div>
                         <div className="divide-y divide-slate-800">
                             {ventureStages.map(({ config, stage }) => {
