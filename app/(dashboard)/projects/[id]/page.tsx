@@ -118,6 +118,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     const ventureNext = ventureSnapshot
         ? await getNextVentureStage(project.id, ventureSnapshot)
         : null;
+    const ventureNextKey = ventureNext?.nextStageKey;
 
     const statusLabels: Record<string, string> = {
         NOT_STARTED: "No iniciado",
@@ -211,9 +212,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                             </h2>
                         </div>
                         <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center gap-3">
-                            {ventureStatus && !ventureStatus.done ? (
+                            {ventureStatus && !ventureStatus.done && ventureNextKey ? (
                                 <Link
-                                    href={`/projects/${project.id}/stages/${ventureNext.nextStageKey}`}
+                                    href={`/projects/${project.id}/stages/${ventureNextKey}`}
                                     className="inline-flex items-center gap-2 rounded bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900"
                                 >
                                     Continuar con el siguiente paso recomendado

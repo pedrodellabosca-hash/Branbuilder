@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 const VENTURE_ORDER = [
     "venture_intake",
@@ -41,10 +42,10 @@ function joinParts(parts: Array<string | undefined>) {
 }
 
 export async function getVentureSnapshot(projectId: string): Promise<VentureSnapshot> {
-    const stages = await prisma.stage.findMany({
+    const stages = (await prisma.stage.findMany({
         where: {
             projectId,
-            stageKey: { in: VENTURE_ORDER },
+            stageKey: { in: [...VENTURE_ORDER] },
         },
         include: {
             outputs: {
@@ -59,7 +60,15 @@ export async function getVentureSnapshot(projectId: string): Promise<VentureSnap
                 },
             },
         },
-    });
+    })) as Prisma.StageGetPayload<{
+        include: {
+            outputs: {
+                include: {
+                    versions: { select: { content: true } };
+                };
+            };
+        };
+    }>[];
 
     const stageMap = new Map(stages.map((stage) => [stage.stageKey, stage]));
 
