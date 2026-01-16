@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db";
 import { slugify } from "@/lib/utils";
 import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
 import { evaluateBriefQuality } from "@/lib/venture/briefQuality";
+import { redactSecrets } from "@/lib/security/redactSecrets";
+
+const MAX_MD_CHARS = 200000;
 
 const VENTURE_ORDER = [
     "venture_intake",
@@ -138,13 +141,15 @@ export async function GET(
         const brief = (stage?.config as { brief?: Record<string, string> } | null)?.brief;
         const quality = brief ? evaluateBriefQuality(key, brief) : null;
         const outputContent = stageSnapshot.latestContent;
+        const briefSafe = brief ? redactSecrets(brief) : null;
+        const outputSafe = redactSecrets(outputContent);
 
         lines.push(``);
         lines.push(`## ${VENTURE_LABELS[key]}`);
         lines.push(``);
         lines.push(`### Brief`);
-        if (brief) {
-            const briefRendered = renderValue(brief);
+        if (briefSafe) {
+            const briefRendered = renderValue(briefSafe);
             lines.push(briefRendered ? briefRendered : "(Sin brief guardado)");
         } else {
             lines.push("(Sin brief guardado)");
@@ -156,13 +161,20 @@ export async function GET(
 
         lines.push(``);
         lines.push(`### Output`);
-        lines.push(renderContentMarkdown(outputContent));
+        lines.push(renderContentMarkdown(outputSafe));
     }
 
     const slug = slugify(project.name) || project.id;
     const filename = `venture-fundamentos-${slug || project.id}.md`;
 
-    return new NextResponse(lines.join("\n"), {
+    let markdown = lines.join("\n");
+    if (markdown.length > MAX_MD_CHARS) {
+        markdown =
+            markdown.slice(0, MAX_MD_CHARS) +
+            "\n\n---\n[TRUNCADO: el export excedía el límite de tamaño]\n";
+    }
+
+    return new NextResponse(markdown, {
         headers: {
             "Content-Type": "text/markdown; charset=utf-8",
             "Content-Disposition": `attachment; filename="${filename}"`,
