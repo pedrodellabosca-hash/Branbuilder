@@ -9,6 +9,7 @@
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { runBusinessPlanGeneration } from "@/lib/business-plan/BusinessPlanGenerationJob";
 
 const prisma = new PrismaClient();
 
@@ -93,7 +94,7 @@ async function processNextJob(): Promise<void> {
     console.log(`[Worker] Processing job ${job.id} (type=${job.type})`);
 
     try {
-        await executeJob(job as JobRecord);
+        const result = await executeJob(job as JobRecord);
 
         // Job is marked DONE by processStageJob usually, but we ensure lock release
         // We check if status was updated; if not, we mark it DONE. 
@@ -105,6 +106,7 @@ async function processNextJob(): Promise<void> {
             data: {
                 status: "DONE", // Fallback if runner didn't update it
                 progress: 100,
+                ...(result ? { result } : {}),
                 completedAt: new Date(),
                 lockedAt: null,
                 lockedBy: null,
@@ -149,11 +151,16 @@ async function processNextJob(): Promise<void> {
 /**
  * Execute job based on type
  */
-async function executeJob(job: JobRecord): Promise<void> {
+async function executeJob(job: JobRecord): Promise<object | void> {
     switch (job.type) {
         case "GENERATE_OUTPUT":
         case "REGENERATE_OUTPUT":
             return await processGenerateOutput(job);
+        case "BUSINESS_PLAN_GENERATE":
+            if (!job.projectId) {
+                throw new Error("Missing projectId on job");
+            }
+            return await runBusinessPlanGeneration(job.id, job.projectId);
 
         case "PROCESS_LIBRARY_FILE":
             console.log("Mock processing file...");

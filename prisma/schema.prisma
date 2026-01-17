@@ -68,6 +68,7 @@ enum JobType {
   BUILD_BRAND_MANUAL
   BATCH_LOGOS
   BATCH_MOCKUPS
+  BUSINESS_PLAN_GENERATE
 }
 
 enum JobStatus {

@@ -4,6 +4,7 @@ import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
 import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS, SectionNotFoundError } from "@/lib/business-plan/BusinessPlanSectionService";
 import { businessPlanService } from "@/lib/business-plan/BusinessPlanService";
 import { businessPlanExportService } from "@/lib/business-plan/BusinessPlanExportService";
+import { processJobSync } from "@/lib/jobs/processor";
 
 const TEST_PREFIX = `test_bp_stage1_${Date.now()}`;
 
@@ -209,6 +210,41 @@ async function main() {
             seededDocument.sections.map((section) => section.key),
             [...BUSINESS_PLAN_TEMPLATE_KEYS],
             "Seeded document should include template keys"
+        );
+
+        const job = await prisma.job.create({
+            data: {
+                orgId: org.id,
+                projectId: project.id,
+                type: "BUSINESS_PLAN_GENERATE",
+                payload: {},
+            },
+        });
+        await processJobSync(job.id);
+
+        const completedJob = await prisma.job.findUnique({
+            where: { id: job.id },
+            select: { status: true, result: true },
+        });
+        assert.equal(completedJob?.status, "DONE", "Job should complete");
+
+        const jobResult = completedJob?.result as {
+            latestSnapshotVersion?: number;
+            businessPlanId?: string;
+        } | null;
+        assert.ok(jobResult?.latestSnapshotVersion, "Job should include snapshot version");
+        assert.ok(jobResult?.businessPlanId, "Job should include businessPlanId");
+
+        const jobSection = await prisma.businessPlanSection.findFirst({
+            where: {
+                businessPlanId: jobResult?.businessPlanId,
+                key: BUSINESS_PLAN_TEMPLATE_KEYS[0],
+            },
+            select: { content: true },
+        });
+        assert.ok(
+            typeof jobSection?.content?.text === "string",
+            "Job should populate mock content"
         );
 
         const pdfBuffer = await businessPlanExportService.exportPdf(document);

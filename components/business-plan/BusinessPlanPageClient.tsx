@@ -50,6 +50,9 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
     const [loadingDocument, setLoadingDocument] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [infoMessage, setInfoMessage] = useState<string | null>(null);
+    const [jobId, setJobId] = useState<string | null>(null);
+    const [jobStatus, setJobStatus] = useState<string | null>(null);
+    const [jobProgress, setJobProgress] = useState<number | null>(null);
 
     const getFriendlyError = useCallback((status: number | null) => {
         if (status === 401 || status === 403) {
@@ -159,6 +162,32 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
         }
     }, [projectId, seedTemplate, loadSnapshots, handleSelectVersion, getFriendlyError]);
 
+    const handleGenerate = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(
+                `/api/projects/${projectId}/business-plan/generate`,
+                {
+                    method: "POST",
+                    credentials: "include",
+                }
+            );
+            if (!res.ok) {
+                console.error("Generate job error:", res.status);
+                throw new Error(getFriendlyError(res.status));
+            }
+            const data = await res.json();
+            setJobId(data.jobId ?? null);
+            setJobStatus("QUEUED");
+            setJobProgress(0);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Ocurrió un error");
+        } finally {
+            setLoading(false);
+        }
+    }, [projectId, getFriendlyError]);
+
     useEffect(() => {
         setLoading(true);
         loadSnapshots()
@@ -209,6 +238,51 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
             });
     }, [businessPlanId, loadDocument]);
 
+    useEffect(() => {
+        if (!jobId) return;
+        let cancelled = false;
+        const poll = async () => {
+            try {
+                const res = await fetch(
+                    `/api/projects/${projectId}/business-plan/generate/status?jobId=${jobId}`,
+                    { credentials: "include" }
+                );
+                if (!res.ok) {
+                    console.error("Job status error:", res.status);
+                    throw new Error(getFriendlyError(res.status));
+                }
+                const data = await res.json();
+                if (cancelled) return;
+                setJobStatus(data.status ?? null);
+                setJobProgress(data.progress ?? null);
+                if (data.status === "DONE") {
+                    setJobId(null);
+                    setJobStatus(null);
+                    setJobProgress(null);
+                    await loadSnapshots();
+                    if (data.latestSnapshotVersion) {
+                        await handleSelectVersion(data.latestSnapshotVersion);
+                    }
+                }
+                if (data.status === "FAILED") {
+                    setError(data.message || "Ocurrió un error");
+                    setJobId(null);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err instanceof Error ? err.message : "Ocurrió un error");
+                    setJobId(null);
+                }
+            }
+        };
+        const interval = setInterval(poll, 3000);
+        poll();
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [jobId, projectId, getFriendlyError, loadSnapshots, handleSelectVersion]);
+
     const snapshotOptions = useMemo(
         () =>
             snapshots.map((snapshot) => ({
@@ -250,6 +324,13 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                         className="inline-flex items-center gap-2 rounded bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900 disabled:opacity-60"
                     >
                         Crear snapshot
+                    </button>
+                    <button
+                        onClick={handleGenerate}
+                        disabled={loading || jobStatus === "PROCESSING" || jobStatus === "QUEUED"}
+                        className="inline-flex items-center gap-2 rounded border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-60"
+                    >
+                        Generar
                     </button>
                 </div>
             </div>
@@ -293,6 +374,11 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                 )}
                 {loadingDocument && (
                     <p className="text-xs text-slate-400">Cargando documento...</p>
+                )}
+                {jobStatus && (
+                    <p className="text-xs text-amber-300">
+                        Generando... {jobProgress ?? 0}%
+                    </p>
                 )}
                 {infoMessage && <p className="text-xs text-amber-300">{infoMessage}</p>}
                 {error && <p className="text-xs text-red-400">{error}</p>}
