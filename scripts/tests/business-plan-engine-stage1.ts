@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { prisma } from "@/lib/db";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
 import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS, SectionNotFoundError } from "@/lib/business-plan/BusinessPlanSectionService";
@@ -11,11 +13,61 @@ import {
     BusinessPlanGenerationRateLimitError,
 } from "@/lib/business-plan/BusinessPlanGenerationQueue";
 
-const TEST_PREFIX = `test_bp_stage1_${Date.now()}`;
+process.env.TZ = "UTC";
+
+const TEST_PREFIX = "test_bp_stage1_fixed";
+const SNAPSHOT_PATH = path.join(
+    process.cwd(),
+    "scripts",
+    "tests",
+    "business-plan",
+    "__snapshots__",
+    "stage1.json"
+);
+
+function sortKeys(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map(sortKeys);
+    }
+    if (value && typeof value === "object") {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, val]) => [key, sortKeys(val)]);
+        return Object.fromEntries(entries);
+    }
+    return value;
+}
+
+function stableStringify(value: unknown): string {
+    return JSON.stringify(sortKeys(value), null, 2);
+}
+
+function assertSnapshot(actual: unknown) {
+    const actualSerialized = stableStringify(actual);
+    if (process.env.UPDATE_BP_STAGE1_SNAPSHOT === "1") {
+        fs.mkdirSync(path.dirname(SNAPSHOT_PATH), { recursive: true });
+        fs.writeFileSync(SNAPSHOT_PATH, `${actualSerialized}\n`, "utf8");
+        console.log(`Snapshot updated: ${SNAPSHOT_PATH}`);
+        return;
+    }
+    const expected = fs.readFileSync(SNAPSHOT_PATH, "utf8");
+    if (expected.trim() !== actualSerialized.trim()) {
+        throw new Error(
+            [
+                "Snapshot mismatch for Stage 1.",
+                "Update scripts/tests/business-plan/__snapshots__/stage1.json if expected.",
+                "--- Expected ---",
+                expected.trim(),
+                "--- Actual ---",
+                actualSerialized.trim(),
+            ].join("\n")
+        );
+    }
+}
 
 function guardEnvironment() {
-    if (process.env.NODE_ENV !== "test" && process.env.RUN_DB_TESTS !== "1") {
-        console.error("Refusing to run: NODE_ENV must be 'test' or RUN_DB_TESTS=1.");
+    if (process.env.RUN_DB_TESTS !== "1") {
+        console.error("Refusing to run: RUN_DB_TESTS must be '1'.");
         process.exit(1);
     }
     const databaseUrl = process.env.DATABASE_URL || "";
@@ -256,6 +308,8 @@ async function main() {
             latestSnapshotVersion?: number;
             businessPlanId?: string;
             perSectionStatus?: Record<string, "ok" | "error">;
+            successCount?: number;
+            failureCount?: number;
         } | null;
         assert.ok(jobResult?.latestSnapshotVersion, "Job should include snapshot version");
         assert.ok(jobResult?.businessPlanId, "Job should include businessPlanId");
@@ -348,6 +402,45 @@ async function main() {
                 "Expected BusinessPlanGenerationRateLimitError"
             );
         }
+
+        const diffSections = {
+            added: [...(diff?.sections.added ?? [])].sort(),
+            removed: [...(diff?.sections.removed ?? [])].sort(),
+            unchanged: [...(diff?.sections.unchanged ?? [])].sort(),
+            changed: [...(diff?.sections.changed ?? [])]
+                .map((item) => ({
+                    key: item.key,
+                    fromContent: item.fromContent,
+                    toContent: item.toContent,
+                }))
+                .sort((a, b) => a.key.localeCompare(b.key)),
+        };
+
+        const snapshot = {
+            schemaVersion: 1,
+            document: {
+                sectionKeys: document.sections.map((section) => section.key),
+                firstSection: document.sections[0]?.content ?? null,
+            },
+            diff: {
+                fromVersion: diff?.fromVersion ?? null,
+                toVersion: diff?.toVersion ?? null,
+                dataChanged: diff?.snapshot.dataChanged ?? null,
+                sections: diffSections,
+            },
+            job: {
+                perSectionStatus: jobResult?.perSectionStatus ?? {},
+                successCount: jobResult?.successCount ?? null,
+                failureCount: jobResult?.failureCount ?? null,
+                sampleText: jobSection?.content?.text ?? null,
+            },
+            rateLimit: {
+                limit: Number(process.env.BUSINESS_PLAN_GENERATE_LIMIT || "3"),
+                windowMinutes: Number(process.env.BUSINESS_PLAN_GENERATE_WINDOW_MINUTES || "60"),
+            },
+        };
+
+        assertSnapshot(snapshot);
 
         console.log("Business Plan Engine Stage 1 tests: OK");
     } finally {

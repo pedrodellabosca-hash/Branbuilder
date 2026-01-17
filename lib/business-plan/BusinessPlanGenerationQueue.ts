@@ -12,6 +12,7 @@ type EnqueueParams = {
     orgId: string;
     projectId: string;
     requestedBy: string;
+    sectionKeys?: string[];
 };
 
 type AdvisoryLockResult = { locked: boolean };
@@ -66,7 +67,7 @@ export async function enqueueBusinessPlanGenerationJob(params: EnqueueParams) {
                     orgId,
                     projectId,
                     type: "BUSINESS_PLAN_GENERATE",
-                    payload: { requestedBy },
+                    payload: { requestedBy, sectionKeys: params.sectionKeys ?? null },
                 },
             });
 

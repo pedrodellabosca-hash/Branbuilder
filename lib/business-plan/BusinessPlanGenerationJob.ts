@@ -62,6 +62,22 @@ export async function runBusinessPlanGeneration(
 ): Promise<BusinessPlanGenerationResult> {
     const now = new Date().toISOString();
     const isTest = process.env.NODE_ENV === "test";
+    const jobRecord = await prisma.job.findUnique({
+        where: { id: jobId },
+        select: { payload: true },
+    });
+    const payload = jobRecord?.payload as { sectionKeys?: unknown } | null;
+    const requestedSectionKeys = Array.isArray(payload?.sectionKeys)
+        ? payload.sectionKeys
+              .map((key) => String(key))
+              .filter((key) =>
+                  BUSINESS_PLAN_TEMPLATE_KEYS.includes(
+                      key as (typeof BUSINESS_PLAN_TEMPLATE_KEYS)[number]
+                  )
+              )
+        : [];
+    const sectionKeys =
+        requestedSectionKeys.length > 0 ? requestedSectionKeys : [...BUSINESS_PLAN_TEMPLATE_KEYS];
 
     await prisma.job.update({
         where: { id: jobId },
@@ -75,6 +91,36 @@ export async function runBusinessPlanGeneration(
         projectId,
         true
     );
+
+    if (requestedSectionKeys.length > 0 && snapshot.version > 1) {
+        const previousSnapshot = await prisma.ventureSnapshot.findFirst({
+            where: { projectId, version: snapshot.version - 1 },
+            select: { id: true },
+        });
+        if (previousSnapshot) {
+            const previousPlan = await prisma.businessPlan.findFirst({
+                where: { sourceSnapshotId: previousSnapshot.id },
+                include: { sections: { select: { key: true, content: true } } },
+            });
+            if (previousPlan) {
+                await Promise.all(
+                    previousPlan.sections.map((section) =>
+                        prisma.businessPlanSection.update({
+                            where: {
+                                businessPlanId_key: {
+                                    businessPlanId: businessPlan.id,
+                                    key: section.key,
+                                },
+                            },
+                            data: {
+                                content: section.content ?? {},
+                            },
+                        })
+                    )
+                );
+            }
+        }
+    }
 
     await prisma.job.update({
         where: { id: jobId },
@@ -98,9 +144,9 @@ export async function runBusinessPlanGeneration(
     let failureCount = 0;
     const perSectionStatus: Record<string, "ok" | "error"> = {};
 
-    for (let index = 0; index < BUSINESS_PLAN_TEMPLATE_KEYS.length; index++) {
-        const key = BUSINESS_PLAN_TEMPLATE_KEYS[index];
-        const progress = 20 + Math.round(((index + 1) / BUSINESS_PLAN_TEMPLATE_KEYS.length) * 70);
+    for (let index = 0; index < sectionKeys.length; index++) {
+        const key = sectionKeys[index];
+        const progress = 20 + Math.round(((index + 1) / sectionKeys.length) * 70);
         let retries = 0;
         let completed = false;
 
@@ -113,7 +159,7 @@ export async function runBusinessPlanGeneration(
                 data: {
                     progress,
                     result: {
-                        message: `Generating ${key}${retrySuffix} (${index + 1}/${BUSINESS_PLAN_TEMPLATE_KEYS.length})`,
+                        message: `Generating ${key}${retrySuffix} (${index + 1}/${sectionKeys.length})`,
                         latestSnapshotVersion: snapshot.version,
                         businessPlanId: businessPlan.id,
                     },

@@ -1,0 +1,114 @@
+{
+  "diff": {
+    "dataChanged": true,
+    "fromVersion": 1,
+    "sections": {
+      "added": [],
+      "changed": [
+        {
+          "fromContent": {},
+          "key": "COMPETITION",
+          "toContent": {
+            "text": "Generated COMPETITION"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "EXECUTIVE_SUMMARY",
+          "toContent": {
+            "text": "Generated EXECUTIVE_SUMMARY"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "FINANCIALS",
+          "toContent": {
+            "text": "Generated FINANCIALS"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "GO_TO_MARKET",
+          "toContent": {
+            "text": "Generated GO_TO_MARKET"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "MARKET",
+          "toContent": {
+            "text": "Generated MARKET"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "OPERATIONS",
+          "toContent": {
+            "text": "Generated OPERATIONS"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "PROBLEM",
+          "toContent": {
+            "text": "Generated PROBLEM"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "RISKS",
+          "toContent": {
+            "text": "Generated RISKS"
+          }
+        },
+        {
+          "fromContent": {},
+          "key": "SOLUTION",
+          "toContent": {
+            "text": "Generated SOLUTION"
+          }
+        }
+      ],
+      "removed": [],
+      "unchanged": []
+    },
+    "toVersion": 2
+  },
+  "document": {
+    "firstSection": {
+      "text": "Generated EXECUTIVE_SUMMARY"
+    },
+    "sectionKeys": [
+      "EXECUTIVE_SUMMARY",
+      "PROBLEM",
+      "SOLUTION",
+      "MARKET",
+      "COMPETITION",
+      "GO_TO_MARKET",
+      "OPERATIONS",
+      "FINANCIALS",
+      "RISKS"
+    ]
+  },
+  "job": {
+    "failureCount": 0,
+    "perSectionStatus": {
+      "COMPETITION": "ok",
+      "EXECUTIVE_SUMMARY": "ok",
+      "FINANCIALS": "ok",
+      "GO_TO_MARKET": "ok",
+      "MARKET": "ok",
+      "OPERATIONS": "ok",
+      "PROBLEM": "ok",
+      "RISKS": "ok",
+      "SOLUTION": "ok"
+    },
+    "sampleText": "Generated EXECUTIVE_SUMMARY",
+    "successCount": 9
+  },
+  "rateLimit": {
+    "limit": 3,
+    "windowMinutes": 60
+  },
+  "schemaVersion": 1
+}
