@@ -52,6 +52,7 @@ export async function enqueueBusinessPlanGenerationJob(params: EnqueueParams) {
                     orgId,
                     projectId,
                     type: "BUSINESS_PLAN_GENERATE",
+                    status: { in: ["DONE", "FAILED"] },
                     createdAt: { gte: windowStart },
                 },
             });

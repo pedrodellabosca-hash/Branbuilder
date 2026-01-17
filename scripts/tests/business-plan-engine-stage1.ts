@@ -323,10 +323,15 @@ async function main() {
         process.env.BUSINESS_PLAN_GENERATE_WINDOW_MINUTES = "60";
 
         for (let i = 0; i < 3; i++) {
-            await enqueueBusinessPlanGenerationJob({
-                orgId: org.id,
-                projectId: rateProject.id,
-                requestedBy: "test-user",
+            await prisma.job.create({
+                data: {
+                    orgId: org.id,
+                    projectId: rateProject.id,
+                    type: "BUSINESS_PLAN_GENERATE",
+                    status: "DONE",
+                    payload: { requestedBy: "test-user" },
+                    createdAt: new Date(Date.now() - 10 * 60 * 1000),
+                },
             });
         }
 
