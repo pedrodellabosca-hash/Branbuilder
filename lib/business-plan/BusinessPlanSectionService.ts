@@ -113,6 +113,12 @@ export class BusinessPlanSectionService {
             throw new InvalidSectionError("Updates required");
         }
         const keys = updates.map((update) => update.key);
+        const invalidKeys = keys.filter(
+            (key) => !BUSINESS_PLAN_TEMPLATE_KEYS.includes(key)
+        );
+        if (invalidKeys.length) {
+            throw new SectionNotFoundError("Section not found");
+        }
         const uniqueKeys = new Set(keys);
         if (uniqueKeys.size !== keys.length) {
             throw new InvalidSectionError("Duplicate keys in request");
