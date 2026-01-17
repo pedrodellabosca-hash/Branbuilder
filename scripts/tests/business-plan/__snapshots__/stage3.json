@@ -1,0 +1,61 @@
+{
+  "diff": {
+    "dataChanged": true,
+    "fromVersion": 1,
+    "sections": {
+      "added": [],
+      "changed": [
+        {
+          "fromContent": {
+            "text": "baseline"
+          },
+          "key": "EXECUTIVE_SUMMARY",
+          "toContent": {
+            "text": "Generated EXECUTIVE_SUMMARY"
+          }
+        }
+      ],
+      "removed": [],
+      "unchanged": [
+        "COMPETITION",
+        "FINANCIALS",
+        "GO_TO_MARKET",
+        "MARKET",
+        "OPERATIONS",
+        "PROBLEM",
+        "RISKS",
+        "SOLUTION"
+      ]
+    },
+    "toVersion": 2
+  },
+  "document": {
+    "firstSection": {
+      "text": "Generated EXECUTIVE_SUMMARY"
+    },
+    "sectionKeys": [
+      "EXECUTIVE_SUMMARY",
+      "PROBLEM",
+      "SOLUTION",
+      "MARKET",
+      "COMPETITION",
+      "GO_TO_MARKET",
+      "OPERATIONS",
+      "FINANCIALS",
+      "RISKS"
+    ]
+  },
+  "job": {
+    "failureCount": 0,
+    "perSectionStatus": {
+      "EXECUTIVE_SUMMARY": "ok"
+    },
+    "sampleText": "Generated EXECUTIVE_SUMMARY",
+    "successCount": 1
+  },
+  "rateLimit": {
+    "limit": 3,
+    "windowMinutes": 60
+  },
+  "schemaVersion": 1
+}

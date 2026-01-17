@@ -23,6 +23,16 @@
 # misc
 .DS_Store
 *.pem
+**/*.docx
+**/*.pdf
+**/*.docx.meta.json
+**/*.pdf.meta.json
+storage/
+public/uploads/
+public/exports/
+PROMPT_MAPPING_REPORT.md
+HEALTHCHECK_REPORT.md
+*_REPORT.md
 
 # debug
 npm-debug.log*
@@ -41,3 +51,6 @@ yarn-error.log*
 *.tsbuildinfo
 
 /app/generated/prisma
+
+# Business plan local test logs
+.business-plan-docker-test.log

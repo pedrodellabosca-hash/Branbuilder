@@ -82,5 +82,4 @@ jobs:
         with:
           name: logs
           path: |
-            server.log
             worker.log

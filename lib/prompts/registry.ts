@@ -12,6 +12,10 @@ import { voicePrompt } from "./stages/voice";
 import { taglinePrompt } from "./stages/tagline";
 import { contextPrompt } from "./stages/context";
 import { defaultPrompt } from "./stages/default";
+import { ventureIntakePrompt } from "./stages/venture-intake";
+import { ventureValidationPrompt } from "./stages/venture-validation";
+import { venturePersonaPrompt } from "./stages/venture-persona";
+import { venturePlanPrompt } from "./stages/venture-plan";
 
 // Registry of all stage prompts
 const promptRegistry: Record<string, StagePrompt> = {
@@ -20,6 +24,10 @@ const promptRegistry: Record<string, StagePrompt> = {
     manifesto: manifestoPrompt,
     voice: voicePrompt,
     tagline: taglinePrompt,
+    venture_intake: ventureIntakePrompt,
+    venture_idea_validation: ventureValidationPrompt,
+    venture_buyer_persona: venturePersonaPrompt,
+    venture_business_plan: venturePlanPrompt,
 };
 
 /**

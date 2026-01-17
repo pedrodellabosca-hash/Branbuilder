@@ -8,15 +8,26 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
+
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:sync": "npx prisma migrate deploy && npx prisma db seed",
+    "db:status": "npx prisma migrate status",
     "db:bootstrap": "./scripts/db-bootstrap.sh",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
+
     "worker": "npx tsx lib/jobs/worker.ts",
     "worker:start": "npx tsx lib/jobs/worker.ts",
+
+    "env:bootstrap": "npx tsx scripts/bootstrap-env.ts",
+    "predev": "npm run env:bootstrap",
+    "preworker:start": "npm run env:bootstrap",
+
+    "healthcheck:local": "npx tsx scripts/healthcheck-local.ts",
+
     "verify:ping": "./scripts/verify-ping.sh",
     "verify:auth": "./scripts/verify-auth.sh",
     "verify:stage": "./scripts/verify-stage-run.sh",
@@ -27,11 +38,25 @@
     "verify:e2e:auth": "./scripts/verify-e2e-auth.sh",
     "verify:e2e:security": "./scripts/verify-e2e-security.sh",
     "verify:models": "./scripts/verify-models.sh",
-    "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
     "verify:env": "npx tsx scripts/verify-env.ts",
-    "env:bootstrap": "npx tsx scripts/bootstrap-env.ts",
-    "predev": "npm run env:bootstrap",
-    "preworker:start": "npm run env:bootstrap",
+    "verify:db": "npx tsx scripts/verify-db.ts",
+    "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
+
+    "test:business-plan": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 node --import tsx scripts/tests/business-plan-engine-stage1.ts",
+    "test:business-plan:update-snapshot": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 UPDATE_BP_STAGE1_SNAPSHOT=1 node --import tsx scripts/tests/business-plan-engine-stage1.ts",
+
+    "test:business-plan:stage2": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 node --import tsx scripts/tests/business-plan-engine-stage2.ts",
+    "test:business-plan:stage2:update-snapshot": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 UPDATE_BP_STAGE2_SNAPSHOT=1 node --import tsx scripts/tests/business-plan-engine-stage2.ts",
+
+    "test:business-plan:stage3": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 node --import tsx scripts/tests/business-plan-engine-stage3.ts",
+    "test:business-plan:stage3:update-snapshot": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 UPDATE_BP_STAGE3_SNAPSHOT=1 node --import tsx scripts/tests/business-plan-engine-stage3.ts",
+
+    "test:business-plan:docker": "sh scripts/test-business-plan-docker.sh",
+    "test:business-plan:docker:all": "npm run test:business-plan:docker",
+    "test:business-plan:docker:stage2": "BP_STAGES=2 npm run test:business-plan:docker",
+    "test:business-plan:docker:stage3": "BP_STAGES=3 npm run test:business-plan:docker",
+    "test:business-plan:docker:update-snapshots": "UPDATE_BP_SNAPSHOTS=1 npm run test:business-plan:docker",
+
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -46,9 +71,11 @@
     "@radix-ui/react-slot": "^1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "docx": "^9.5.1",
     "jose": "^6.1.3",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
+    "pdfkit": "^0.15.0",
     "prisma": "^6.19.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -57,14 +84,17 @@
     "tailwind-merge": "^3.4.0",
     "tsx": "^4.21.0",
     "uuid": "^13.0.0",
+    "yazl": "^2.5.1",
     "zod": "^4.2.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.13.9",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
+    "@types/yazl": "^2.4.5",
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",

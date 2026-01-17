@@ -68,6 +68,7 @@ enum JobType {
   BUILD_BRAND_MANUAL
   BATCH_LOGOS
   BATCH_MOCKUPS
+  BUSINESS_PLAN_GENERATE
 }
 
 enum JobStatus {
@@ -149,6 +150,30 @@ enum AuditAction {
   API_KEY_ROTATED
   API_KEY_REVOKED
   SSO_CONFIGURED
+}
+
+enum BusinessPlanStatus {
+  DRAFT
+  APPROVED
+  ARCHIVED
+}
+
+enum BusinessPlanSectionKey {
+  EXECUTIVE_SUMMARY
+  PROBLEM
+  SOLUTION
+  MARKET
+  COMPETITION
+  GO_TO_MARKET
+  OPERATIONS
+  FINANCIALS
+  RISKS
+}
+
+enum BusinessPlanEventType {
+  CREATED
+  SECTION_UPDATED
+  STATUS_CHANGED
 }
 
 // =============================================================================
@@ -237,6 +262,7 @@ model Project {
   // Modules enabled
   moduleA     Boolean       @default(false) // Brand Creation
   moduleB     Boolean       @default(false) // Brand Strategy
+  moduleVenture Boolean     @default(false) // Venture Pipeline
   
   // Cloning/Branching
   parentId    String?
@@ -249,6 +275,8 @@ model Project {
   brandCore   BrandCoreProfile?
   stages      Stage[]
   outputs     Output[]
+  ventureSnapshots VentureSnapshot[]
+  businessPlans BusinessPlan[]
   comments    Comment[]
   jobs        Job[]
   
@@ -273,6 +301,21 @@ model ProjectMember {
   @@unique([projectId, userId])
   @@index([projectId])
   @@index([userId])
+}
+
+model VentureSnapshot {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  businessPlans BusinessPlan[]
+
+  @@unique([projectId, version])
+  @@index([projectId])
 }
 
 // =============================================================================
@@ -395,6 +438,54 @@ model OutputVersion {
   @@unique([outputId, version])
   @@index([outputId])
   @@index([status])
+}
+
+model BusinessPlan {
+  id               String             @id @default(cuid())
+  projectId        String
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceSnapshotId String
+  sourceSnapshot   VentureSnapshot    @relation(fields: [sourceSnapshotId], references: [id], onDelete: Restrict)
+  version          Int                @default(1)
+  status           BusinessPlanStatus @default(DRAFT)
+
+  sections         BusinessPlanSection[]
+  events           BusinessPlanEvent[]
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([projectId, version])
+  @@index([projectId])
+  @@index([sourceSnapshotId])
+}
+
+model BusinessPlanSection {
+  id             String               @id @default(cuid())
+  businessPlanId String
+  businessPlan   BusinessPlan         @relation(fields: [businessPlanId], references: [id], onDelete: Cascade)
+  key            BusinessPlanSectionKey
+  title          String
+  content        Json?
+
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([businessPlanId, key])
+  @@index([businessPlanId])
+  @@index([key])
+}
+
+model BusinessPlanEvent {
+  id             String              @id @default(cuid())
+  businessPlanId String
+  businessPlan   BusinessPlan        @relation(fields: [businessPlanId], references: [id], onDelete: Cascade)
+  type           BusinessPlanEventType
+  payload        Json?
+  createdAt      DateTime            @default(now())
+
+  @@index([businessPlanId])
+  @@index([type])
 }
 
 // =============================================================================
@@ -723,4 +814,3 @@ model PlanConfig {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
-

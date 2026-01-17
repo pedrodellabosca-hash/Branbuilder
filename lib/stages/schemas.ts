@@ -12,6 +12,10 @@ import { z } from "zod";
 // =============================================================================
 
 export const STAGE_KEYS = [
+    "venture_intake",
+    "venture_idea_validation",
+    "venture_buyer_persona",
+    "venture_business_plan",
     "context",
     "naming",
     "manifesto",
@@ -119,6 +123,100 @@ export const TaglineOutputSchema = z.object({
 export type TaglineOutput = z.infer<typeof TaglineOutputSchema>;
 
 /**
+ * Venture Intake schema
+ */
+export const VentureIntakeSchema = z.object({
+    business_idea: z.string().min(1),
+    target_market: z.object({
+        segment: z.string().optional(),
+        geography: z.string().optional(),
+        demographics: z.string().optional(),
+        psychographics: z.string().optional(),
+        pain_points: z.array(z.string()).optional(),
+        needs: z.array(z.string()).optional(),
+    }).optional(),
+    product_service: z.object({
+        name: z.string().optional(),
+        description: z.string().optional(),
+        differentiation: z.string().optional(),
+    }).optional(),
+    pricing_model: z.object({
+        type: z.string().optional(),
+        price_range: z.string().optional(),
+    }).optional(),
+    competitive_advantage: z.string().optional(),
+    channels: z.array(z.string()).optional(),
+    traction: z.object({
+        users: z.string().optional(),
+        revenue: z.string().optional(),
+        proof: z.string().optional(),
+    }).optional(),
+    founders: z.array(z.object({
+        name: z.string().optional(),
+        role: z.string().optional(),
+        background: z.string().optional(),
+    })).optional(),
+    constraints: z.array(z.string()).optional(),
+    goals: z.array(z.string()).optional(),
+});
+
+export type VentureIntakeOutput = z.infer<typeof VentureIntakeSchema>;
+
+/**
+ * Venture Validation schema
+ */
+export const VentureValidationSchema = z.object({
+    summary: z.string().min(1),
+    market_size: z.object({
+        tam: z.string().optional(),
+        sam: z.string().optional(),
+        som: z.string().optional(),
+    }).optional(),
+    competition: z.array(z.string()).optional(),
+    risks: z.array(z.string()).optional(),
+    assumptions: z.array(z.string()).optional(),
+    recommendation: z.string().optional(),
+    viability_score: z.number().min(0).max(10).optional(),
+});
+
+export type VentureValidationOutput = z.infer<typeof VentureValidationSchema>;
+
+/**
+ * Venture Persona schema
+ */
+export const VenturePersonaSchema = z.object({
+    personas: z.array(z.object({
+        name: z.string(),
+        role: z.string().optional(),
+        goals: z.array(z.string()).optional(),
+        pains: z.array(z.string()).optional(),
+        behaviors: z.array(z.string()).optional(),
+        motivations: z.array(z.string()).optional(),
+    })).min(1),
+    notes: z.string().optional(),
+});
+
+export type VenturePersonaOutput = z.infer<typeof VenturePersonaSchema>;
+
+/**
+ * Venture Plan schema
+ */
+export const VenturePlanSchema = z.object({
+    executive_summary: z.string().min(1),
+    problem: z.string().optional(),
+    solution: z.string().optional(),
+    market: z.string().optional(),
+    business_model: z.string().optional(),
+    go_to_market: z.string().optional(),
+    operations: z.string().optional(),
+    financials: z.string().optional(),
+    milestones: z.array(z.string()).optional(),
+    risks: z.array(z.string()).optional(),
+});
+
+export type VenturePlanOutput = z.infer<typeof VenturePlanSchema>;
+
+/**
  * Passthrough schema for stages not yet modeled
  * TODO: Add proper schemas for palette, typography, logo, visual_identity
  */
@@ -129,6 +227,10 @@ export const PassthroughOutputSchema = z.any();
 // =============================================================================
 
 export const StageOutputSchemas: Record<StageKey, z.ZodSchema<unknown>> = {
+    venture_intake: VentureIntakeSchema,
+    venture_idea_validation: VentureValidationSchema,
+    venture_buyer_persona: VenturePersonaSchema,
+    venture_business_plan: VenturePlanSchema,
     context: ContextOutputSchema,
     naming: NamingOutputSchema,
     manifesto: ManifestoOutputSchema,

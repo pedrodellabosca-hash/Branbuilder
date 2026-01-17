@@ -10,9 +10,14 @@ import {
     CheckCircle,
     Circle,
     ChevronRight,
+    Lightbulb,
 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { ProjectFiles } from "@/components/project/ProjectFiles";
+import { getNextVentureStage } from "@/lib/venture/getNextVentureStage";
+import { getVentureSnapshot } from "@/lib/venture/getVentureSnapshot";
+import { getVentureFundamentosStatusFromSnapshot } from "@/lib/venture/getVentureFundamentosStatus";
+import { VentureExportActions } from "@/components/venture/VentureExportActions";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -90,6 +95,30 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
     const moduleAStages = project.stages.filter((s) => s.module === "A");
     const moduleBStages = project.stages.filter((s) => s.module === "B");
+
+    const ventureStageConfig = [
+        { key: "venture_intake", label: "Intake" },
+        { key: "venture_idea_validation", label: "Validación de idea" },
+        { key: "venture_buyer_persona", label: "Buyer Persona" },
+        { key: "venture_business_plan", label: "Business Plan" },
+    ];
+
+    const ventureStages = ventureStageConfig
+        .map((config) => ({
+            config,
+            stage: project.stages.find((stage) => stage.stageKey === config.key),
+        }))
+        .filter((entry) => entry.stage);
+
+    const ventureSnapshot =
+        ventureStages.length > 0 ? await getVentureSnapshot(project.id) : null;
+    const ventureStatus = ventureSnapshot
+        ? getVentureFundamentosStatusFromSnapshot(ventureSnapshot)
+        : null;
+    const ventureNext = ventureSnapshot
+        ? await getNextVentureStage(project.id, ventureSnapshot)
+        : null;
+    const ventureNextKey = ventureNext?.nextStageKey;
 
     const statusLabels: Record<string, string> = {
         NOT_STARTED: "No iniciado",
@@ -174,6 +203,97 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
             {/* Stages by Module */}
             <div className="grid gap-6 lg:grid-cols-2">
+                {ventureStages.length > 0 && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl lg:col-span-2">
+                        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-800">
+                            <Lightbulb className="w-5 h-5 text-amber-400" />
+                            <h2 className="text-lg font-semibold text-white">
+                                Fundamentos del negocio
+                            </h2>
+                        </div>
+                        <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center gap-3">
+                            {ventureStatus && !ventureStatus.done && ventureNextKey ? (
+                                <Link
+                                    href={`/projects/${project.id}/stages/${ventureNextKey}`}
+                                    className="inline-flex items-center gap-2 rounded bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900"
+                                >
+                                    Continuar con el siguiente paso recomendado
+                                </Link>
+                            ) : (
+                                <span
+                                    className={`text-xs font-semibold px-3 py-1.5 rounded ${ventureStatus?.approved
+                                        ? "bg-green-500/10 text-green-400"
+                                        : "bg-amber-500/10 text-amber-300"
+                                        }`}
+                                >
+                                    Fundamentos completos
+                                </span>
+                            )}
+                            <Link
+                                href={`/api/projects/${project.id}/venture/export`}
+                                className="inline-flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+                            >
+                                Exportar Fundamentos (MD)
+                            </Link>
+                            <Link
+                                href={`/api/projects/${project.id}/venture/export/pdf`}
+                                className="inline-flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+                            >
+                                Exportar Fundamentos (PDF)
+                            </Link>
+                            <Link
+                                href={`/api/projects/${project.id}/venture/export/bundle`}
+                                className="inline-flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+                            >
+                                Descargar paquete (ZIP)
+                            </Link>
+                            <VentureExportActions projectId={project.id} />
+                        </div>
+                        <div className="divide-y divide-slate-800">
+                            {ventureStages.map(({ config, stage }) => {
+                                const status = stage?.status ?? "NOT_STARTED";
+                                const StatusIcon = statusIcons[status] || Circle;
+                                return (
+                                    <Link
+                                        key={config.key}
+                                        href={`/projects/${project.id}/stages/${config.key}`}
+                                        className="flex items-center justify-between px-5 py-3 hover:bg-slate-800/50 transition-colors group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <StatusIcon
+                                                className={`w-4 h-4 ${status === "APPROVED"
+                                                    ? "text-green-500"
+                                                    : status === "NOT_STARTED"
+                                                        ? "text-slate-500"
+                                                        : "text-amber-400"
+                                                    }`}
+                                            />
+                                            <div>
+                                                <p className="text-sm font-medium text-white group-hover:text-amber-300 transition-colors">
+                                                    {config.label}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className={`text-xs px-2 py-1 rounded ${status === "APPROVED"
+                                                    ? "bg-green-500/10 text-green-400"
+                                                    : status === "NOT_STARTED"
+                                                        ? "bg-slate-500/10 text-slate-400"
+                                                        : "bg-amber-500/10 text-amber-300"
+                                                    }`}
+                                            >
+                                                {statusLabels[status] || status}
+                                            </span>
+                                            <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors" />
+                                        </div>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Module A */}
                 {project.moduleA && moduleAStages.length > 0 && (
                     <div className="bg-slate-900 border border-slate-800 rounded-xl">

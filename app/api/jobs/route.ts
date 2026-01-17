@@ -13,6 +13,7 @@ const JOB_TYPES = [
     "BUILD_BRAND_MANUAL",
     "BATCH_LOGOS",
     "BATCH_MOCKUPS",
+    "BUSINESS_PLAN_GENERATE",
 ] as const;
 
 // Types that REQUIRE projectId
@@ -24,6 +25,7 @@ const PROJECT_REQUIRED_TYPES = [
     "BUILD_BRAND_MANUAL",
     "BATCH_LOGOS",
     "BATCH_MOCKUPS",
+    "BUSINESS_PLAN_GENERATE",
 ] as const;
 
 const enqueueJobSchema = z.object({

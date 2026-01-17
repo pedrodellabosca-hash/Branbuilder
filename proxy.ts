@@ -25,7 +25,13 @@ export const proxy = clerkMiddleware(async (auth, request) => {
     }
 
     // Get auth state
-    const { userId } = await auth()
+    let userId: string | null = null
+    try {
+        const authState = await auth()
+        userId = authState.userId
+    } catch {
+        userId = null
+    }
 
     // Check for E2E test token (only in non-production)
     if (!userId && process.env.NODE_ENV !== 'production') {

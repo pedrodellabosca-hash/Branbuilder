@@ -59,6 +59,10 @@ export interface RunStageResult {
 
 // Stage definitions for auto-creation
 const STAGE_DEFINITIONS: Record<string, { name: string; module: "A" | "B"; order: number }> = {
+    venture_intake: { name: "Intake de Idea", module: "A", order: -40 },
+    venture_idea_validation: { name: "Validacion de Idea", module: "A", order: -30 },
+    venture_buyer_persona: { name: "Buyer Persona (Venture)", module: "A", order: -20 },
+    venture_business_plan: { name: "Plan de Negocio", module: "A", order: -10 },
     context: { name: "Contexto", module: "A", order: 0 },
     naming: { name: "Naming", module: "A", order: 1 },
     manifesto: { name: "Manifiesto de Marca", module: "A", order: 2 },
@@ -176,6 +180,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
     // Resolve effective configuration
     // Use persisted config from stage if available (and not overridden by params)
     const savedConfig: any = (stage as any).config || {};
+    const brief = savedConfig.brief;
 
     const effectiveConfig = resolveEffectiveConfig({
         stageKey,
@@ -265,6 +270,7 @@ export async function runStage(params: RunStageParams): Promise<RunStageResult> 
                 userId,
                 // Keep config in payload for redundancy/compatibility
                 ...serializeConfig(effectiveConfig),
+                ...(brief !== undefined ? { brief } : {}),
             },
         },
     });

@@ -195,6 +195,19 @@ export function StageActions({
 
         console.log("[StageActions] Running stage:", { projectId, stageKey, useDraft });
 
+        const formatRunError = (message: string) => {
+            if (message.includes("PROVIDER_NOT_CONFIGURED") || message.includes("AI Provider not configured")) {
+                return "Proveedor de IA no configurado. Agrega API keys o activa AI_MOCK_MODE=1.";
+            }
+            if (message.includes("STAGE_LOCKED")) {
+                return "La etapa esta bloqueada por otro usuario. Intenta mas tarde.";
+            }
+            if (message.includes("MISSING_DEPENDENCY")) {
+                return `Faltan dependencias para ejecutar la etapa. ${message}`;
+            }
+            return message;
+        };
+
         try {
             // Use new /run endpoint (handles idempotency server-side)
             const response = await fetch(`/api/projects/${projectId}/stages/${stageKey}/run`, {
@@ -216,11 +229,15 @@ export function StageActions({
             }
 
             if (!response.ok) {
-                const data = await response.json();
-                if (response.status === 401) {
-                    throw new Error("Authentication required");
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 402) {
+                    setError(data.error || "Límite de tokens alcanzado.");
+                    setIsLoading(false);
+                    return;
                 }
-                throw new Error(data.error || "Error ejecutando etapa");
+                if (response.status === 401) throw new Error("Authentication required");
+                const errorMessage = data.error || "Error ejecutando etapa";
+                throw new Error(formatRunError(errorMessage));
             }
 
             const data = await response.json();
@@ -708,4 +725,3 @@ export function StageActions({
         </div>
     );
 }
-

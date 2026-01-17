@@ -3,6 +3,7 @@ import { getAIProvider } from "@/lib/ai";
 import { getStagePrompt } from "@/lib/prompts";
 import { deserializeConfig } from "@/lib/ai/resolve-config";
 import type { EffectiveConfig } from "@/lib/ai/config";
+import { runBusinessPlanGeneration } from "@/lib/business-plan/BusinessPlanGenerationJob";
 
 /**
  * Process a job synchronously (for dev mode or inline processing)
@@ -36,6 +37,11 @@ export async function processJobSync(jobId: string): Promise<void> {
 
         if (job.type === "GENERATE_OUTPUT" || job.type === "REGENERATE_OUTPUT") {
             result = await processGenerateOutput(job);
+        } else if (job.type === "BUSINESS_PLAN_GENERATE") {
+            if (!job.projectId) {
+                throw new Error("Missing projectId on job");
+            }
+            result = await runBusinessPlanGeneration(job.id, job.projectId);
         } else {
             // Other job types - mock for now
             result = { success: true, message: `${job.type} processed (mock)` };
