@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
+
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:sync": "npx prisma migrate deploy && npx prisma db seed",
@@ -17,8 +18,16 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
+
     "worker": "npx tsx lib/jobs/worker.ts",
     "worker:start": "npx tsx lib/jobs/worker.ts",
+
+    "env:bootstrap": "npx tsx scripts/bootstrap-env.ts",
+    "predev": "npm run env:bootstrap",
+    "preworker:start": "npm run env:bootstrap",
+
+    "healthcheck:local": "npx tsx scripts/healthcheck-local.ts",
+
     "verify:ping": "./scripts/verify-ping.sh",
     "verify:auth": "./scripts/verify-auth.sh",
     "verify:stage": "./scripts/verify-stage-run.sh",
@@ -29,14 +38,25 @@
     "verify:e2e:auth": "./scripts/verify-e2e-auth.sh",
     "verify:e2e:security": "./scripts/verify-e2e-security.sh",
     "verify:models": "./scripts/verify-models.sh",
-    "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
     "verify:env": "npx tsx scripts/verify-env.ts",
     "verify:db": "npx tsx scripts/verify-db.ts",
-    "env:bootstrap": "npx tsx scripts/bootstrap-env.ts",
-    "predev": "npm run env:bootstrap",
-    "preworker:start": "npm run env:bootstrap",
-    "healthcheck:local": "npx tsx scripts/healthcheck-local.ts",
-    "test:business-plan": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 npx tsx scripts/tests/business-plan-engine-stage1.ts",
+    "verify:all": "npm run verify:ping && npm run verify:auth && npm run verify:stage && npm run verify:openai && npm run verify:output",
+
+    "test:business-plan": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 node --import tsx scripts/tests/business-plan-engine-stage1.ts",
+    "test:business-plan:update-snapshot": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 UPDATE_BP_STAGE1_SNAPSHOT=1 node --import tsx scripts/tests/business-plan-engine-stage1.ts",
+
+    "test:business-plan:stage2": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 node --import tsx scripts/tests/business-plan-engine-stage2.ts",
+    "test:business-plan:stage2:update-snapshot": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 UPDATE_BP_STAGE2_SNAPSHOT=1 node --import tsx scripts/tests/business-plan-engine-stage2.ts",
+
+    "test:business-plan:stage3": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 node --import tsx scripts/tests/business-plan-engine-stage3.ts",
+    "test:business-plan:stage3:update-snapshot": "NODE_OPTIONS= NODE_ENV=test RUN_DB_TESTS=1 UPDATE_BP_STAGE3_SNAPSHOT=1 node --import tsx scripts/tests/business-plan-engine-stage3.ts",
+
+    "test:business-plan:docker": "sh scripts/test-business-plan-docker.sh",
+    "test:business-plan:docker:all": "npm run test:business-plan:docker",
+    "test:business-plan:docker:stage2": "BP_STAGES=2 npm run test:business-plan:docker",
+    "test:business-plan:docker:stage3": "BP_STAGES=3 npm run test:business-plan:docker",
+    "test:business-plan:docker:update-snapshots": "UPDATE_BP_SNAPSHOTS=1 npm run test:business-plan:docker",
+
     "postinstall": "prisma generate"
   },
   "dependencies": {
