@@ -53,6 +53,7 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
     const [jobId, setJobId] = useState<string | null>(null);
     const [jobStatus, setJobStatus] = useState<string | null>(null);
     const [jobProgress, setJobProgress] = useState<number | null>(null);
+    const [jobMessage, setJobMessage] = useState<string | null>(null);
 
     const getFriendlyError = useCallback((status: number | null) => {
         if (status === 401 || status === 403) {
@@ -255,10 +256,17 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                 if (cancelled) return;
                 setJobStatus(data.status ?? null);
                 setJobProgress(data.progress ?? null);
+                setJobMessage(data.message ?? null);
                 if (data.status === "DONE") {
                     setJobId(null);
                     setJobStatus(null);
                     setJobProgress(null);
+                    setJobMessage(null);
+                    if (data.successCount !== null && data.failureCount !== null) {
+                        setInfoMessage(
+                            `Generación completa: ${data.successCount} ok, ${data.failureCount} con error.`
+                        );
+                    }
                     await loadSnapshots();
                     if (data.latestSnapshotVersion) {
                         await handleSelectVersion(data.latestSnapshotVersion);
@@ -267,11 +275,13 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                 if (data.status === "FAILED") {
                     setError(data.message || "Ocurrió un error");
                     setJobId(null);
+                    setJobMessage(null);
                 }
             } catch (err) {
                 if (!cancelled) {
                     setError(err instanceof Error ? err.message : "Ocurrió un error");
                     setJobId(null);
+                    setJobMessage(null);
                 }
             }
         };
@@ -378,6 +388,7 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                 {jobStatus && (
                     <p className="text-xs text-amber-300">
                         Generando... {jobProgress ?? 0}%
+                        {jobMessage ? ` · ${jobMessage}` : ""}
                     </p>
                 )}
                 {infoMessage && <p className="text-xs text-amber-300">{infoMessage}</p>}

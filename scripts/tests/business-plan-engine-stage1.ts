@@ -227,6 +227,11 @@ async function main() {
             select: { status: true, result: true },
         });
         assert.equal(completedJob?.status, "DONE", "Job should complete");
+        const resultText = JSON.stringify(completedJob?.result ?? {});
+        assert.ok(
+            !resultText.toLowerCase().includes("prompt"),
+            "Job result should not include prompt details"
+        );
 
         const jobResult = completedJob?.result as {
             latestSnapshotVersion?: number;
@@ -243,8 +248,8 @@ async function main() {
             select: { content: true },
         });
         assert.ok(
-            typeof jobSection?.content?.text === "string",
-            "Job should populate mock content"
+            jobSection?.content?.text === `Generated ${BUSINESS_PLAN_TEMPLATE_KEYS[0]}`,
+            "Job should populate deterministic mock content"
         );
 
         const pdfBuffer = await businessPlanExportService.exportPdf(document);

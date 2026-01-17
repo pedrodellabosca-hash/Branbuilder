@@ -33,6 +33,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             return NextResponse.json({ error: "Proyecto no encontrado" }, { status: 404 });
         }
 
+        const existingJob = await prisma.job.findFirst({
+            where: {
+                orgId: org.id,
+                projectId,
+                type: "BUSINESS_PLAN_GENERATE",
+                status: { in: ["QUEUED", "PROCESSING"] },
+            },
+            select: { id: true },
+        });
+
+        if (existingJob) {
+            return NextResponse.json(
+                { error: "Ya hay una generación en curso" },
+                { status: 409 }
+            );
+        }
+
         const job = await prisma.job.create({
             data: {
                 orgId: org.id,

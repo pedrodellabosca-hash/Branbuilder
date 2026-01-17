@@ -63,6 +63,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             progress: job.progress,
             message,
             latestSnapshotVersion: result?.latestSnapshotVersion ?? null,
+            successCount: result?.successCount ?? null,
+            failureCount: result?.failureCount ?? null,
         });
     } catch (error) {
         console.error("Error fetching business plan job status:", error);
