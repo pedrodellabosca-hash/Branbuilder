@@ -147,7 +147,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
     const stageConfig = (stage as any).config ?? {};
     const savedBrief = (stageConfig as { brief?: Record<string, string> }).brief ?? null;
 
-    const briefPrefill: Record<string, string> = (() => {
+    const briefPrefill = (() => {
         if (!ventureSnapshot) return {};
         switch (stage.stageKey) {
             case "venture_intake":
@@ -181,7 +181,7 @@ export default async function StageDetailPage({ params, searchParams }: PageProp
             default:
                 return {};
         }
-    })();
+    })() as Record<string, string>;
 
     const briefInitial = savedBrief ?? briefPrefill;
     const briefQuality = isVentureStage ? evaluateBriefQuality(stage.stageKey, briefInitial) : null;

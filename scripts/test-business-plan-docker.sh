@@ -13,6 +13,11 @@ REUSE_CONTAINER="${REUSE_CONTAINER:-}"
 BP_STAGES="${BP_STAGES:-1,2,3}"
 UPDATE_BP_SNAPSHOTS="${UPDATE_BP_SNAPSHOTS:-0}"
 
+# Normalize CI env for reuse logic.
+if [ "${CI:-}" = "true" ]; then
+  CI="1"
+fi
+
 # Default reuse policy:
 # - CI: do not reuse (clean, deterministic)
 # - Local: reuse for speed
