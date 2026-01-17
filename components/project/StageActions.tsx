@@ -231,7 +231,7 @@ export function StageActions({
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
                 if (response.status === 402) {
-                    setError(<TokenLimitBanner error={data} onPurchaseAddon={buyAddon} />);
+                    setError(data.error || "Límite de tokens alcanzado.");
                     setIsLoading(false);
                     return;
                 }

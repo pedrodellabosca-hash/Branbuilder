@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { BusinessPlanSectionKey } from "@prisma/client";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
 import {
     businessPlanSectionService,
@@ -67,16 +68,17 @@ export async function runBusinessPlanGeneration(
         select: { payload: true },
     });
     const payload = jobRecord?.payload as { sectionKeys?: unknown } | null;
-    const requestedSectionKeys = Array.isArray(payload?.sectionKeys)
+    const requestedSectionKeys: BusinessPlanSectionKey[] = Array.isArray(payload?.sectionKeys)
         ? payload.sectionKeys
               .map((key) => String(key))
-              .filter((key) =>
-                  BUSINESS_PLAN_TEMPLATE_KEYS.includes(
-                      key as (typeof BUSINESS_PLAN_TEMPLATE_KEYS)[number]
-                  )
+              .filter(
+                  (key): key is BusinessPlanSectionKey =>
+                      BUSINESS_PLAN_TEMPLATE_KEYS.includes(
+                          key as (typeof BUSINESS_PLAN_TEMPLATE_KEYS)[number]
+                      )
               )
         : [];
-    const sectionKeys =
+    const sectionKeys: BusinessPlanSectionKey[] =
         requestedSectionKeys.length > 0 ? requestedSectionKeys : [...BUSINESS_PLAN_TEMPLATE_KEYS];
 
     await prisma.job.update({

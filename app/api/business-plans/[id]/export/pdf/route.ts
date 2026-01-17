@@ -38,7 +38,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         const dateTag = new Date().toISOString().slice(0, 10);
         const filename = `business-plan_${document.businessPlanId}_v${document.snapshotVersion}_${dateTag}.pdf`;
 
-        return new NextResponse(buffer, {
+        const body = new Uint8Array(buffer);
+        return new NextResponse(body, {
             headers: {
                 "Content-Type": "application/pdf",
                 "Content-Disposition": `attachment; filename="${filename}"`,

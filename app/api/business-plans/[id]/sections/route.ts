@@ -6,7 +6,7 @@ import {
     InvalidSectionError,
     SectionNotFoundError,
 } from "@/lib/business-plan/BusinessPlanSectionService";
-import { BusinessPlanSectionKey } from "@prisma/client";
+import { BusinessPlanSectionKey, Prisma } from "@prisma/client";
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -14,7 +14,7 @@ interface RouteParams {
 
 type UpdateInput = {
     key: string;
-    content: Record<string, unknown>;
+    content: Prisma.InputJsonValue;
 };
 
 function isValidSectionKey(value: string): value is BusinessPlanSectionKey {
@@ -46,7 +46,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             }
             return {
                 key: update.key as BusinessPlanSectionKey,
-                content: update.content,
+                content: update.content as Prisma.InputJsonValue,
             };
         });
 

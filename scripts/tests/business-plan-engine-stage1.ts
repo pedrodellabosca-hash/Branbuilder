@@ -42,6 +42,14 @@ function stableStringify(value: unknown): string {
     return JSON.stringify(sortKeys(value), null, 2);
 }
 
+function getTextContent(content: unknown): string | null {
+    if (!content || typeof content !== "object" || Array.isArray(content)) {
+        return null;
+    }
+    const record = content as Record<string, unknown>;
+    return typeof record.text === "string" ? record.text : null;
+}
+
 function assertSnapshot(actual: unknown) {
     const actualSerialized = stableStringify(actual);
     if (process.env.UPDATE_BP_STAGE1_SNAPSHOT === "1") {
@@ -229,7 +237,7 @@ async function main() {
             { text: "updated single" }
         );
         assert.equal(
-            updatedSingle.content?.text,
+            getTextContent(updatedSingle.content),
             "updated single",
             "Single update should persist"
         );
@@ -261,7 +269,7 @@ async function main() {
             select: { content: true },
         });
         assert.notEqual(
-            verifyBatch?.content?.text,
+            getTextContent(verifyBatch?.content),
             "valid",
             "Invalid batch should not partially write updates"
         );
@@ -327,7 +335,7 @@ async function main() {
             select: { content: true },
         });
         assert.ok(
-            jobSection?.content?.text === `Generated ${BUSINESS_PLAN_TEMPLATE_KEYS[0]}`,
+            getTextContent(jobSection?.content) === `Generated ${BUSINESS_PLAN_TEMPLATE_KEYS[0]}`,
             "Job should populate deterministic mock content"
         );
 
@@ -432,7 +440,7 @@ async function main() {
                 perSectionStatus: jobResult?.perSectionStatus ?? {},
                 successCount: jobResult?.successCount ?? null,
                 failureCount: jobResult?.failureCount ?? null,
-                sampleText: jobSection?.content?.text ?? null,
+                sampleText: getTextContent(jobSection?.content),
             },
             rateLimit: {
                 limit: Number(process.env.BUSINESS_PLAN_GENERATE_LIMIT || "3"),

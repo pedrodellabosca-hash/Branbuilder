@@ -60,7 +60,7 @@ export async function buildVentureExportMarkdown(project: { id: string; name: st
     const stages = await prisma.stage.findMany({
         where: {
             projectId: project.id,
-            stageKey: { in: VENTURE_ORDER },
+            stageKey: { in: [...VENTURE_ORDER] },
         },
         include: {
             outputs: {
@@ -78,7 +78,10 @@ export async function buildVentureExportMarkdown(project: { id: string; name: st
     });
 
     const snapshot = await getVentureSnapshot(project.id);
-    const stageMap = new Map(stages.map((stage) => [stage.stageKey, stage]));
+    type StageWithOutputs = (typeof stages)[number];
+    const stageMap = new Map<string, StageWithOutputs>(
+        stages.map((stage) => [stage.stageKey, stage])
+    );
     const exportDate = new Date().toISOString();
 
     const lines: string[] = [];
@@ -91,7 +94,7 @@ export async function buildVentureExportMarkdown(project: { id: string; name: st
     lines.push(`## Estado del bloque`);
 
     for (const key of VENTURE_ORDER) {
-        const stage = stageMap.get(key);
+        const stage = stageMap.get(key) as StageWithOutputs | undefined;
         const stageSnapshot = snapshot.stages[key];
         const latestVersion = stage?.outputs[0]?.versions[0]?.version ?? null;
         lines.push(`- ${VENTURE_LABELS[key]} (${key})`);

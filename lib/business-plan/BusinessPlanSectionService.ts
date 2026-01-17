@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 
 export type CreateSectionInput = {
     key: BusinessPlanSectionKey;
-    content: Record<string, unknown>;
+    content: Prisma.InputJsonValue;
 };
 
 export const BUSINESS_PLAN_TEMPLATE_KEYS = [
@@ -74,7 +74,7 @@ export class BusinessPlanSectionService {
     async updateSection(
         businessPlanId: string,
         key: BusinessPlanSectionKey,
-        content: Record<string, unknown>
+        content: Prisma.InputJsonValue
     ) {
         if (!content || typeof content !== "object") {
             throw new InvalidSectionError("Contenido inválido");
@@ -107,7 +107,7 @@ export class BusinessPlanSectionService {
 
     async updateSectionsBatch(
         businessPlanId: string,
-        updates: Array<{ key: BusinessPlanSectionKey; content: Record<string, unknown> }>
+        updates: Array<{ key: BusinessPlanSectionKey; content: Prisma.InputJsonValue }>
     ) {
         if (!updates.length) {
             throw new InvalidSectionError("Updates required");

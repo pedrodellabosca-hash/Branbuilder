@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { BusinessPlanService } from "@/lib/business-plan/BusinessPlanService";
 import { BusinessPlanSectionService, SectionConflictError } from "@/lib/business-plan/BusinessPlanSectionService";
 
@@ -6,8 +7,8 @@ export type VentureSnapshotData = {
     schemaVersion: 1;
     projectId: string;
     createdAt: string;
-    inputs: Record<string, unknown>;
-    derived: Record<string, unknown>;
+    inputs: Prisma.InputJsonValue;
+    derived: Prisma.InputJsonValue;
 };
 
 export class VentureSnapshotService {

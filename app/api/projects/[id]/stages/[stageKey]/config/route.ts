@@ -41,7 +41,8 @@ export async function PUT(
 
         let validatedBrief: unknown | undefined;
         if (config.brief !== undefined) {
-            const schema = getVentureBriefSchema(stage.stageKey);
+            const stageKeyValue = String(stage.stageKey);
+            const schema = getVentureBriefSchema(stageKeyValue);
             if (schema) {
                 validatedBrief = schema.parse(config.brief);
             } else {
@@ -59,7 +60,7 @@ export async function PUT(
         };
 
         const updatedStage = await prisma.stage.update({
-            where: { id: stage.id },
+            where: { id: String(stage.id) },
             data: {
                 config: nextConfig,
             } as any,

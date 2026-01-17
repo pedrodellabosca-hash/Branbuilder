@@ -58,7 +58,8 @@ export async function GET(
     });
     const pdfFilename = filename.replace(/\.md$/i, ".pdf");
 
-    return new NextResponse(pdfBuffer, {
+    const body = new Uint8Array(pdfBuffer);
+    return new NextResponse(body, {
         headers: {
             "Content-Type": "application/pdf",
             "Content-Disposition": `attachment; filename="${pdfFilename}"`,

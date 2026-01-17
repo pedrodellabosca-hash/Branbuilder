@@ -27,7 +27,7 @@ export async function renderVentureExportPdf(
     const chunks: Buffer[] = [];
 
     const done = new Promise<Buffer>((resolve, reject) => {
-        doc.on("data", (chunk) => {
+        doc.on("data", (chunk: Buffer) => {
             chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         });
         doc.on("end", () => resolve(Buffer.concat(chunks)));

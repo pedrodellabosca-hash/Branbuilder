@@ -3,6 +3,8 @@ import path from "path";
 import { prisma } from "../lib/db";
 import { runStage } from "../lib/stages/runStage";
 import { STAGE_DEPENDENCIES } from "../lib/stages/gating";
+import { Prisma } from "@prisma/client";
+import { type StageKey } from "../lib/stages/schemas";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
@@ -10,13 +12,15 @@ process.env.AI_MOCK_MODE = "1";
 process.env.AI_PROVIDER = "MOCK";
 
 async function invalidateDownstream(
-    tx: typeof prisma,
+    tx: Prisma.TransactionClient,
     projectId: string,
-    changedStageKey: string
+    changedStageKey: StageKey
 ) {
-    const dependents: string[] = [];
+    const dependents: StageKey[] = [];
 
-    for (const [key, deps] of Object.entries(STAGE_DEPENDENCIES)) {
+    for (const [key, deps] of Object.entries(STAGE_DEPENDENCIES) as Array<
+        [StageKey, StageKey[]]
+    >) {
         if (deps.includes(changedStageKey)) {
             dependents.push(key);
         }

@@ -7,7 +7,7 @@ import {
     HeadingLevel,
     ImageRun,
 } from "docx";
-import { BusinessPlanSectionKey } from "@prisma/client";
+import { BusinessPlanSectionKey, Prisma } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -24,7 +24,7 @@ export type BusinessPlanDocument = {
     sections: Array<{
         key: string;
         title: string;
-        content: Record<string, unknown>;
+        content: Prisma.JsonValue;
     }>;
 };
 
@@ -72,12 +72,18 @@ function getLogoBuffer() {
     return null;
 }
 
-function renderSectionContent(content: Record<string, unknown>) {
-    if (typeof content?.text === "string") {
-        return content.text;
+function renderSectionContent(content: Prisma.JsonValue) {
+    if (typeof content === "string") {
+        return content;
     }
-    if (typeof content?.markdown === "string") {
-        return content.markdown;
+    if (content && typeof content === "object" && !Array.isArray(content)) {
+        const record = content as Record<string, unknown>;
+        if (typeof record.text === "string") {
+            return record.text;
+        }
+        if (typeof record.markdown === "string") {
+            return record.markdown;
+        }
     }
     return JSON.stringify(content ?? {}, null, 2);
 }
@@ -192,10 +198,14 @@ export class BusinessPlanExportService {
             doc.font("Helvetica-Bold").fontSize(16).text(title);
             doc.moveDown(0.4);
             const content = renderSectionContent(section.content);
-            if (typeof section.content?.markdown === "string") {
-                renderPdfBlocks(doc, parseMarkdownBlocks(section.content.markdown));
-            } else if (typeof section.content?.text === "string") {
-                renderPdfBlocks(doc, parseMarkdownBlocks(section.content.text));
+            const contentRecord =
+                section.content && typeof section.content === "object" && !Array.isArray(section.content)
+                    ? (section.content as Record<string, unknown>)
+                    : null;
+            if (contentRecord && typeof contentRecord.markdown === "string") {
+                renderPdfBlocks(doc, parseMarkdownBlocks(contentRecord.markdown));
+            } else if (contentRecord && typeof contentRecord.text === "string") {
+                renderPdfBlocks(doc, parseMarkdownBlocks(contentRecord.text));
             } else {
                 renderPdfBlocks(doc, [{ type: "code", text: content }]);
             }
@@ -240,6 +250,7 @@ export class BusinessPlanExportService {
                         new ImageRun({
                             data: logo.buffer,
                             transformation: { width: 120, height: 40 },
+                            type: "png",
                         }),
                     ],
                 })
@@ -282,8 +293,12 @@ export class BusinessPlanExportService {
                 })
             );
             const content = renderSectionContent(section.content);
-            if (typeof section.content?.markdown === "string") {
-                for (const block of parseMarkdownBlocks(section.content.markdown)) {
+            const contentRecord =
+                section.content && typeof section.content === "object" && !Array.isArray(section.content)
+                    ? (section.content as Record<string, unknown>)
+                    : null;
+            if (contentRecord && typeof contentRecord.markdown === "string") {
+                for (const block of parseMarkdownBlocks(contentRecord.markdown)) {
                     if (block.type === "heading") {
                         paragraphs.push(
                             new Paragraph({
@@ -304,8 +319,8 @@ export class BusinessPlanExportService {
                     }
                     paragraphs.push(new Paragraph({ text: block.text }));
                 }
-            } else if (typeof section.content?.text === "string") {
-                for (const block of parseMarkdownBlocks(section.content.text)) {
+            } else if (contentRecord && typeof contentRecord.text === "string") {
+                for (const block of parseMarkdownBlocks(contentRecord.text)) {
                     if (block.type === "heading") {
                         paragraphs.push(
                             new Paragraph({

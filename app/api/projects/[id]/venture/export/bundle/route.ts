@@ -101,7 +101,8 @@ export async function GET(
         { name: "README.txt", content: Buffer.from(readme, "utf8") },
     ]);
 
-    return new NextResponse(zipBuffer, {
+    const body = new Uint8Array(zipBuffer);
+    return new NextResponse(body, {
         headers: {
             "Content-Type": "application/zip",
             "Content-Disposition": `attachment; filename="${baseName}.zip"`,
