@@ -71,8 +71,8 @@ export async function enqueueBusinessPlanGenerationJob(params: EnqueueParams) {
 
             return job;
         } finally {
-            await tx.$queryRaw`
-                SELECT pg_advisory_unlock(hashtext(${orgId}), hashtext(${projectId}))
+            await tx.$queryRaw<{ unlocked: boolean }[]>`
+                SELECT (pg_advisory_unlock(hashtext(${orgId}), hashtext(${projectId})))::bool AS unlocked
             `;
         }
     });

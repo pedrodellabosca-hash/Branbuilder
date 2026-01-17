@@ -286,12 +286,17 @@ async function main() {
         assert.equal(docxBuffer.subarray(0, 2).toString(), "PK", "DOCX zip header");
 
         const lockHold = prisma.$transaction(async (tx) => {
-            await tx.$queryRaw`
-                SELECT pg_advisory_lock(hashtext(${org.id}), hashtext(${rateProject.id}))
+            const rows = await tx.$queryRaw<{ locked: boolean }[]>`
+                SELECT pg_try_advisory_lock(hashtext(${org.id}), hashtext(${rateProject.id})) AS locked
             `;
+            if (!rows[0]?.locked) {
+                throw new Error("expected_lock_acquired");
+            }
+
             await new Promise((resolve) => setTimeout(resolve, 800));
-            await tx.$queryRaw`
-                SELECT pg_advisory_unlock(hashtext(${org.id}), hashtext(${rateProject.id}))
+
+            await tx.$queryRaw<{ unlocked: boolean }[]>`
+                SELECT (pg_advisory_unlock(hashtext(${org.id}), hashtext(${rateProject.id})))::bool AS unlocked
             `;
         });
 
