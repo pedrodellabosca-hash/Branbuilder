@@ -5,6 +5,11 @@ import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLAT
 import { businessPlanService } from "@/lib/business-plan/BusinessPlanService";
 import { businessPlanExportService } from "@/lib/business-plan/BusinessPlanExportService";
 import { processJobSync } from "@/lib/jobs/processor";
+import {
+    enqueueBusinessPlanGenerationJob,
+    BusinessPlanGenerationLockError,
+    BusinessPlanGenerationRateLimitError,
+} from "@/lib/business-plan/BusinessPlanGenerationQueue";
 
 const TEST_PREFIX = `test_bp_stage1_${Date.now()}`;
 
@@ -29,6 +34,7 @@ async function main() {
 
     let orgId: string | null = null;
     let projectId: string | null = null;
+    let rateProjectId: string | null = null;
     let businessPlanId: string | null = null;
 
     try {
@@ -51,6 +57,17 @@ async function main() {
             },
         });
         projectId = project.id;
+
+        const rateProject = await prisma.project.create({
+            data: {
+                orgId: org.id,
+                name: `${TEST_PREFIX}_rate_project`,
+                description: "Business plan engine rate limit test",
+                moduleVenture: true,
+                status: "CREATED",
+            },
+        });
+        rateProjectId = rateProject.id;
 
         const first = await ventureSnapshotService.createSnapshot(project.id);
         assert.equal(first.snapshot.version, 1, "First snapshot should have version 1");
@@ -220,7 +237,9 @@ async function main() {
                 payload: {},
             },
         });
+        process.env.BUSINESS_PLAN_TEST_RETRY = "1";
         await processJobSync(job.id);
+        delete process.env.BUSINESS_PLAN_TEST_RETRY;
 
         const completedJob = await prisma.job.findUnique({
             where: { id: job.id },
@@ -236,9 +255,15 @@ async function main() {
         const jobResult = completedJob?.result as {
             latestSnapshotVersion?: number;
             businessPlanId?: string;
+            perSectionStatus?: Record<string, "ok" | "error">;
         } | null;
         assert.ok(jobResult?.latestSnapshotVersion, "Job should include snapshot version");
         assert.ok(jobResult?.businessPlanId, "Job should include businessPlanId");
+        assert.equal(
+            jobResult?.perSectionStatus?.[BUSINESS_PLAN_TEMPLATE_KEYS[0]],
+            "ok",
+            "Job result should include per-section status"
+        );
 
         const jobSection = await prisma.businessPlanSection.findFirst({
             where: {
@@ -259,6 +284,60 @@ async function main() {
         const docxBuffer = await businessPlanExportService.exportDocx(document);
         assert.ok(docxBuffer.length > 1500, "DOCX buffer should be non-trivial");
         assert.equal(docxBuffer.subarray(0, 2).toString(), "PK", "DOCX zip header");
+
+        const lockHold = prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`
+                SELECT pg_advisory_lock(hashtext(${org.id}), hashtext(${rateProject.id}))
+            `;
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            await tx.$queryRaw`
+                SELECT pg_advisory_unlock(hashtext(${org.id}), hashtext(${rateProject.id}))
+            `;
+        });
+
+        const lockAttempt = (async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            try {
+                await enqueueBusinessPlanGenerationJob({
+                    orgId: org.id,
+                    projectId: rateProject.id,
+                    requestedBy: "test-user",
+                });
+                assert.fail("Expected BusinessPlanGenerationLockError for locked project");
+            } catch (error) {
+                assert.ok(
+                    error instanceof BusinessPlanGenerationLockError,
+                    "Expected BusinessPlanGenerationLockError"
+                );
+            }
+        })();
+
+        await Promise.all([lockHold, lockAttempt]);
+
+        process.env.BUSINESS_PLAN_GENERATE_LIMIT = "3";
+        process.env.BUSINESS_PLAN_GENERATE_WINDOW_MINUTES = "60";
+
+        for (let i = 0; i < 3; i++) {
+            await enqueueBusinessPlanGenerationJob({
+                orgId: org.id,
+                projectId: rateProject.id,
+                requestedBy: "test-user",
+            });
+        }
+
+        try {
+            await enqueueBusinessPlanGenerationJob({
+                orgId: org.id,
+                projectId: rateProject.id,
+                requestedBy: "test-user",
+            });
+            assert.fail("Expected BusinessPlanGenerationRateLimitError");
+        } catch (error) {
+            assert.ok(
+                error instanceof BusinessPlanGenerationRateLimitError,
+                "Expected BusinessPlanGenerationRateLimitError"
+            );
+        }
 
         console.log("Business Plan Engine Stage 1 tests: OK");
     } finally {

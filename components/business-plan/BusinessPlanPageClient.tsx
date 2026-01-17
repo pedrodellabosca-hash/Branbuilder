@@ -63,7 +63,10 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
             return "No encontrado";
         }
         if (status === 409) {
-            return "Conflicto: ya existe";
+            return "Ya hay una generación en curso";
+        }
+        if (status === 429) {
+            return "Límite alcanzado. Intentá más tarde.";
         }
         return "Ocurrió un error";
     }, []);
