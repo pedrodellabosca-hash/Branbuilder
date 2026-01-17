@@ -1,0 +1,59 @@
+name: Business Plan (Docker)
+
+concurrency:
+  group: business-plan-docker-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  business-plan-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Node version file
+        id: node-version
+        run: |
+          if [ -f .nvmrc ]; then
+            echo "file=.nvmrc" >> $GITHUB_OUTPUT
+          elif [ -f .node-version ]; then
+            echo "file=.node-version" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node (from file)
+        if: steps.node-version.outputs.file != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ steps.node-version.outputs.file }}
+          cache: npm
+
+      - name: Setup Node (default)
+        if: steps.node-version.outputs.file == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci --include=dev
+
+      - name: Business plan tests (docker)
+        run: npm run test:business-plan:docker
+
+      - name: Upload business-plan log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: business-plan-docker-logs
+          path: |
+            .business-plan-docker-test.log
+          if-no-files-found: ignore
