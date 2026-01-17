@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type SnapshotSummary = {
     id: string;
@@ -37,41 +38,64 @@ type BusinessPlanPageClientProps = {
 };
 
 export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProps) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
     const [businessPlanId, setBusinessPlanId] = useState<string | null>(null);
     const [documentView, setDocumentView] = useState<DocumentView | null>(null);
-    const [seedTemplate, setSeedTemplate] = useState(false);
+    const [seedTemplate, setSeedTemplate] = useState(true);
     const [loading, setLoading] = useState(false);
+    const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+    const [loadingDocument, setLoadingDocument] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+    const getFriendlyError = useCallback((status: number | null) => {
+        if (status === 401 || status === 403) {
+            return "Necesitás iniciar sesión / no tenés permisos";
+        }
+        if (status === 404) {
+            return "No encontrado";
+        }
+        if (status === 409) {
+            return "Conflicto: ya existe";
+        }
+        return "Ocurrió un error";
+    }, []);
 
     const loadSnapshots = useCallback(async () => {
         setError(null);
+        setLoadingSnapshots(true);
         const res = await fetch(`/api/projects/${projectId}/venture-snapshots`, {
             credentials: "include",
         });
         if (!res.ok) {
-            throw new Error("Error al cargar snapshots");
+            console.error("Snapshots error:", res.status);
+            throw new Error(getFriendlyError(res.status));
         }
         const data = await res.json();
         setSnapshots(data.snapshots ?? []);
-    }, [projectId]);
+        setLoadingSnapshots(false);
+    }, [projectId, getFriendlyError]);
 
     const loadSnapshotVersion = useCallback(
         async (version: number) => {
             setError(null);
+            setInfoMessage(null);
             const res = await fetch(
                 `/api/projects/${projectId}/venture-snapshots/${version}`,
                 { credentials: "include" }
             );
             if (!res.ok) {
-                throw new Error("Error al cargar snapshot");
+                console.error("Snapshot error:", res.status);
+                throw new Error(getFriendlyError(res.status));
             }
             const data = await res.json();
             setBusinessPlanId(data.businessPlanId ?? null);
             return data.snapshot as SnapshotDetail;
         },
-        [projectId]
+        [projectId, getFriendlyError]
     );
 
     const loadDocument = useCallback(async (planId: string) => {
@@ -80,26 +104,32 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
             credentials: "include",
         });
         if (!res.ok) {
-            throw new Error("Error al cargar documento");
+            console.error("Document error:", res.status);
+            throw new Error(getFriendlyError(res.status));
         }
         const data = await res.json();
         setDocumentView(data);
-    }, []);
+    }, [getFriendlyError]);
 
     const handleSelectVersion = useCallback(
-        async (version: number) => {
+        async (version: number, updateUrl = true) => {
             setLoading(true);
+            setLoadingDocument(true);
             setDocumentView(null);
             try {
                 await loadSnapshotVersion(version);
                 setSelectedVersion(version);
+                if (updateUrl) {
+                    router.replace(`?version=${version}`);
+                }
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Error al cargar snapshot");
+                setError(err instanceof Error ? err.message : "Ocurrió un error");
             } finally {
                 setLoading(false);
+                setLoadingDocument(false);
             }
         },
-        [loadSnapshotVersion]
+        [loadSnapshotVersion, router]
     );
 
     const handleCreateSnapshot = useCallback(async () => {
@@ -113,8 +143,8 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                 credentials: "include",
             });
             if (!res.ok) {
-                const msg = res.status === 409 ? "Conflicto al crear snapshot" : "Error al crear snapshot";
-                throw new Error(msg);
+                console.error("Create snapshot error:", res.status);
+                throw new Error(getFriendlyError(res.status));
             }
             const data = await res.json();
             const version = data.snapshot?.version ?? null;
@@ -123,11 +153,11 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                 await handleSelectVersion(version);
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Error al crear snapshot");
+            setError(err instanceof Error ? err.message : "Ocurrió un error");
         } finally {
             setLoading(false);
         }
-    }, [projectId, seedTemplate, loadSnapshots, handleSelectVersion]);
+    }, [projectId, seedTemplate, loadSnapshots, handleSelectVersion, getFriendlyError]);
 
     useEffect(() => {
         setLoading(true);
@@ -137,9 +167,30 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
             })
             .catch((err) => {
                 setLoading(false);
-                setError(err instanceof Error ? err.message : "Error al cargar snapshots");
+                setError(err instanceof Error ? err.message : "Ocurrió un error");
             });
     }, [loadSnapshots]);
+
+    useEffect(() => {
+        if (!snapshots.length) {
+            setSelectedVersion(null);
+            return;
+        }
+        const paramVersion = searchParams.get("version");
+        const parsed = paramVersion ? Number(paramVersion) : null;
+        if (parsed && Number.isInteger(parsed)) {
+            const exists = snapshots.some((snapshot) => snapshot.version === parsed);
+            if (exists) {
+                handleSelectVersion(parsed, false);
+                return;
+            }
+            setInfoMessage("Versión no encontrada, mostrando la más reciente.");
+        }
+        const latest = [...snapshots].sort((a, b) => b.version - a.version)[0];
+        if (latest) {
+            handleSelectVersion(latest.version, false);
+        }
+    }, [snapshots, searchParams, handleSelectVersion]);
 
     useEffect(() => {
         if (!businessPlanId) {
@@ -147,11 +198,15 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
             return;
         }
         setLoading(true);
+        setLoadingDocument(true);
         loadDocument(businessPlanId)
             .catch((err) => {
-                setError(err instanceof Error ? err.message : "Error al cargar documento");
+                setError(err instanceof Error ? err.message : "Ocurrió un error");
             })
-            .finally(() => setLoading(false));
+            .finally(() => {
+                setLoading(false);
+                setLoadingDocument(false);
+            });
     }, [businessPlanId, loadDocument]);
 
     const snapshotOptions = useMemo(
@@ -233,9 +288,31 @@ export function BusinessPlanPageClient({ projectId }: BusinessPlanPageClientProp
                         </div>
                     )}
                 </div>
-                {loading && <p className="text-xs text-slate-400">Cargando...</p>}
+                {loadingSnapshots && (
+                    <p className="text-xs text-slate-400">Cargando snapshots...</p>
+                )}
+                {loadingDocument && (
+                    <p className="text-xs text-slate-400">Cargando documento...</p>
+                )}
+                {infoMessage && <p className="text-xs text-amber-300">{infoMessage}</p>}
                 {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
+
+            {!snapshots.length && !loadingSnapshots && (
+                <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-center">
+                    <h2 className="text-lg font-semibold text-white">Sin snapshots</h2>
+                    <p className="mt-2 text-sm text-slate-400">
+                        Crea el primer snapshot para comenzar el Business Plan.
+                    </p>
+                    <button
+                        onClick={handleCreateSnapshot}
+                        disabled={loading}
+                        className="mt-4 inline-flex items-center gap-2 rounded bg-amber-500 px-4 py-2 text-xs font-semibold text-slate-900 disabled:opacity-60"
+                    >
+                        Crear primer snapshot
+                    </button>
+                </div>
+            )}
 
             {documentView && (
                 <div className="space-y-4">
