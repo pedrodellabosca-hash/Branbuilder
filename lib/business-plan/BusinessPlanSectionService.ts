@@ -26,6 +26,10 @@ export class InvalidSectionError extends Error {
     code = "INVALID_SECTION" as const;
 }
 
+export class SectionNotFoundError extends Error {
+    code = "SECTION_NOT_FOUND" as const;
+}
+
 export class BusinessPlanSectionService {
     async createSections(businessPlanId: string, sections: CreateSectionInput[]) {
         if (!sections.length) {
@@ -65,6 +69,86 @@ export class BusinessPlanSectionService {
             content: {},
         }));
         return this.createSectionsWithTx(tx, businessPlanId, sections);
+    }
+
+    async updateSection(
+        businessPlanId: string,
+        key: BusinessPlanSectionKey,
+        content: Record<string, unknown>
+    ) {
+        if (!content || typeof content !== "object") {
+            throw new InvalidSectionError("Contenido inválido");
+        }
+
+        return prisma.$transaction(async (tx) => {
+            const existing = await tx.businessPlanSection.findFirst({
+                where: { businessPlanId, key },
+                select: { id: true },
+            });
+
+            if (!existing) {
+                throw new SectionNotFoundError("Section not found");
+            }
+
+            return tx.businessPlanSection.update({
+                where: {
+                    businessPlanId_key: {
+                        businessPlanId,
+                        key,
+                    },
+                },
+                data: {
+                    content,
+                },
+                select: { id: true, key: true, content: true },
+            });
+        });
+    }
+
+    async updateSectionsBatch(
+        businessPlanId: string,
+        updates: Array<{ key: BusinessPlanSectionKey; content: Record<string, unknown> }>
+    ) {
+        if (!updates.length) {
+            throw new InvalidSectionError("Updates required");
+        }
+        const keys = updates.map((update) => update.key);
+        const uniqueKeys = new Set(keys);
+        if (uniqueKeys.size !== keys.length) {
+            throw new InvalidSectionError("Duplicate keys in request");
+        }
+
+        return prisma.$transaction(async (tx) => {
+            const existing = await tx.businessPlanSection.findMany({
+                where: {
+                    businessPlanId,
+                    key: { in: keys },
+                },
+                select: { key: true },
+            });
+            if (existing.length !== keys.length) {
+                throw new SectionNotFoundError("Section not found");
+            }
+
+            const updated = await Promise.all(
+                updates.map((update) =>
+                    tx.businessPlanSection.update({
+                        where: {
+                            businessPlanId_key: {
+                                businessPlanId,
+                                key: update.key,
+                            },
+                        },
+                        data: {
+                            content: update.content,
+                        },
+                        select: { id: true, key: true, content: true },
+                    })
+                )
+            );
+
+            return updated;
+        });
     }
 
     private async createSectionsWithTx(

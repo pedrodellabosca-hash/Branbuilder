@@ -9,13 +9,8 @@ import {
 import { BusinessPlanSectionKey } from "@prisma/client";
 
 interface RouteParams {
-    params: Promise<{ id: string }>;
+    params: Promise<{ id: string; key: string }>;
 }
-
-type UpdateInput = {
-    key: string;
-    content: Record<string, unknown>;
-};
 
 function isValidSectionKey(value: string): value is BusinessPlanSectionKey {
     return (Object.values(BusinessPlanSectionKey) as string[]).includes(value);
@@ -24,31 +19,22 @@ function isValidSectionKey(value: string): value is BusinessPlanSectionKey {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
     try {
         const { userId, orgId } = await auth();
-        const { id: businessPlanId } = await params;
+        const { id: businessPlanId, key } = await params;
 
         if (!userId || !orgId) {
             return NextResponse.json({ error: "No autorizado" }, { status: 401 });
         }
 
-        const body = await request.json();
-        const updates = Array.isArray(body?.updates) ? (body.updates as UpdateInput[]) : null;
-
-        if (!updates || updates.length === 0) {
-            return NextResponse.json({ error: "Actualizaciones inválidas" }, { status: 400 });
+        if (!isValidSectionKey(key)) {
+            return NextResponse.json({ error: "Clave inválida" }, { status: 400 });
         }
 
-        const mapped = updates.map((update) => {
-            if (!update || typeof update.key !== "string" || !isValidSectionKey(update.key)) {
-                throw new InvalidSectionError("Clave inválida");
-            }
-            if (!update.content || typeof update.content !== "object") {
-                throw new InvalidSectionError("Contenido inválido");
-            }
-            return {
-                key: update.key as BusinessPlanSectionKey,
-                content: update.content,
-            };
-        });
+        const body = await request.json();
+        const content = body?.content;
+
+        if (!content || typeof content !== "object") {
+            return NextResponse.json({ error: "Contenido inválido" }, { status: 400 });
+        }
 
         const org = await prisma.organization.findUnique({
             where: { clerkOrgId: orgId },
@@ -68,20 +54,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             return NextResponse.json({ error: "Business plan no encontrado" }, { status: 404 });
         }
 
-        const updated = await businessPlanSectionService.updateSectionsBatch(
+        const updated = await businessPlanSectionService.updateSection(
             businessPlanId,
-            mapped
+            key,
+            content
         );
 
         return NextResponse.json({ updated });
     } catch (error) {
         if (error instanceof InvalidSectionError) {
-            return NextResponse.json({ error: "Actualizaciones inválidas" }, { status: 400 });
+            return NextResponse.json({ error: "Contenido inválido" }, { status: 400 });
         }
         if (error instanceof SectionNotFoundError) {
             return NextResponse.json({ error: "Sección no encontrada" }, { status: 404 });
         }
-        console.error("Error updating business plan sections:", error);
+        console.error("Error updating business plan section:", error);
         return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
     }
 }

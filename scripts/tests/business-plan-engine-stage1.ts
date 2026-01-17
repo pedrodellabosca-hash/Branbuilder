@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { prisma } from "@/lib/db";
 import { ventureSnapshotService } from "@/lib/venture/VentureSnapshotService";
-import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS } from "@/lib/business-plan/BusinessPlanSectionService";
+import { businessPlanSectionService, SectionConflictError, BUSINESS_PLAN_TEMPLATE_KEYS, SectionNotFoundError } from "@/lib/business-plan/BusinessPlanSectionService";
 import { businessPlanService } from "@/lib/business-plan/BusinessPlanService";
 import { businessPlanExportService } from "@/lib/business-plan/BusinessPlanExportService";
 
@@ -151,6 +151,49 @@ async function main() {
             document.sections[0].content,
             { text: "v1" },
             "Document should reflect updated content"
+        );
+
+        const updatedSingle = await businessPlanSectionService.updateSection(
+            businessPlanId,
+            BUSINESS_PLAN_TEMPLATE_KEYS[1],
+            { text: "updated single" }
+        );
+        assert.equal(
+            updatedSingle.content?.text,
+            "updated single",
+            "Single update should persist"
+        );
+
+        const batchUpdated = await businessPlanSectionService.updateSectionsBatch(businessPlanId, [
+            { key: BUSINESS_PLAN_TEMPLATE_KEYS[2], content: { text: "batch one" } },
+            { key: BUSINESS_PLAN_TEMPLATE_KEYS[3], content: { text: "batch two" } },
+        ]);
+        assert.equal(batchUpdated.length, 2, "Batch update should update two sections");
+
+        try {
+            await businessPlanSectionService.updateSectionsBatch(businessPlanId, [
+                { key: BUSINESS_PLAN_TEMPLATE_KEYS[4], content: { text: "valid" } },
+                { key: "INVALID_KEY" as typeof BUSINESS_PLAN_TEMPLATE_KEYS[number], content: { text: "invalid" } },
+            ]);
+            assert.fail("Expected SectionNotFoundError for invalid key");
+        } catch (error) {
+            assert.ok(
+                error instanceof SectionNotFoundError,
+                "Expected SectionNotFoundError on invalid batch update"
+            );
+        }
+
+        const verifyBatch = await prisma.businessPlanSection.findFirst({
+            where: {
+                businessPlanId,
+                key: BUSINESS_PLAN_TEMPLATE_KEYS[4],
+            },
+            select: { content: true },
+        });
+        assert.notEqual(
+            verifyBatch?.content?.text,
+            "valid",
+            "Invalid batch should not partially write updates"
         );
 
         const seededSnapshot = await ventureSnapshotService.createSnapshotWithSeed(
